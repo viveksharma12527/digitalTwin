@@ -1,229 +1,608 @@
-# NSDS Project 2 — Digital Twin for a Low-power Wireless Network
-Politecnico di Milano — Networked Software for Distributed Systems
+# 🌐 NSDS Project 2 — Digital Twin for a Low-power Wireless Network
 
-================================================================
-WHAT IS THIS PROJECT?
-================================================================
+> **Politecnico di Milano** | Networked Software for Distributed Systems | A.Y. 2025/2026  
+> **Technologies:** Contiki-NG · Akka · Node-RED
 
-You have tiny battery-powered sensors talking wirelessly.
-You create a virtual ghost copy of every sensor on your laptop.
-When a real sensor changes route → ghost updates.
-When a real sensor crashes → ghost crashes and recovers.
-That is a Digital Twin.
+***
 
-3 technologies working together:
-- Contiki-NG + Cooja  →  simulates the real IoT sensor network
-- Akka (Java)         →  virtual ghost copies (digital twins)
-- Node-RED            →  the glue keeping real and virtual in sync
+## 📖 What Is This Project?
 
-================================================================
-ARCHITECTURE
-================================================================
+A **Digital Twin** is a virtual copy of a physical system that stays synchronized in real-time.
 
-[COOJA SIMULATOR]
-    [Root Node]
-        ↑
-    [Node 1] ←RPL Tree→ [Node 2] → [Node 3]
-         ↕ UDP/JSON
-[NODE-RED - THE GLUE]
-    Flow 1: Parent Change  → notify Akka
-    Flow 2: App Message    → mimic in Akka
-    Flow 3: Set Period T   → command Contiki node
-    Flow 4: Crash detected → crash Akka actor
-         ↕ HTTP/TCP
-[AKKA ACTOR SYSTEM]
-    SupervisorActor
-        ├── IoTNodeActor (twin of Node 1)
-        │     state: currentParent, lastKParents, T
-        ├── IoTNodeActor (twin of Node 2)
-        └── IoTNodeActor (twin of Node 3)
+This project builds a digital twin of a low-power IoT wireless network:
 
-CRITICAL RULE:
-  NO coordination logic in Contiki-NG
-  NO coordination logic in Akka actors
-  ALL coordination logic ONLY in Node-RED
-  You must be able to SWAP a Node-RED flow to change behavior
+| Layer | Technology | Role |
+|---|---|---|
+| Real IoT Network | Contiki-NG + Cooja | Simulates real sensors forming an RPL tree |
+| Digital Twin | Akka (Java) | One actor = one sensor's ghost copy |
+| Coordination | Node-RED | Keeps real and virtual world in sync |
 
-================================================================
-PREREQUISITES — INSTALL THESE FIRST (MAC)
-================================================================
+### ⚠️ Critical Design Rule (Professor will ask!)
 
-1. Homebrew
-   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+- ❌ NO coordination logic inside Contiki-NG
+- ❌ NO coordination logic inside Akka actors
+- ✅ ALL coordination logic in Node-RED **only**
+- You must be able to **swap a Node-RED flow** to change twin behavior without touching Contiki or Akka
 
-2. Git LFS
-   brew install git-lfs
-   git lfs install
+***
 
-3. Docker Desktop
-   Download: https://www.docker.com/products/docker-desktop/
-   Open it → wait for whale icon in menu bar
+## 🏗️ Architecture
 
-4. XQuartz (for Cooja GUI on Mac)
-   brew install --cask xquartz
-   *** RESTART MAC AFTER THIS ***
-   Then: XQuartz → Preferences → Security → CHECK "Allow connections from network clients"
+```
+┌──────────────────────────────────────────────────┐
+│          COOJA SIMULATOR (Contiki-NG)             │
+│                                                   │
+│   [Root Node fd00::1]                             │
+│        ↑                                          │
+│   [Node 1] ──RPL Tree── [Node 2] ── [Node 3]     │
+│                                                   │
+└─────────────────↕ UDP/JSON ──────────────────────┘
+                  ↕
+┌──────────────────────────────────────────────────┐
+│              NODE-RED  (Port 1880)                │
+│  Flow 1: Parent Change  ──→ notify Akka           │
+│  Flow 2: App Message    ──→ mimic in Akka         │
+│  Flow 3: Set Period T   ──→ command Contiki node  │
+│  Flow 4: Crash          ──→ crash Akka actor      │
+└─────────────────↕ HTTP ──────────────────────────┘
+                  ↕
+┌──────────────────────────────────────────────────┐
+│             AKKA ACTOR SYSTEM                     │
+│  SupervisorActor                                  │
+│    ├── IoTNodeActor [node1]                       │
+│    │     • currentParent                          │
+│    │     • lastKParents[]  (history of K parents) │
+│    │     • messagePeriod T                        │
+│    ├── IoTNodeActor [node2]                       │
+│    └── IoTNodeActor [node3]                       │
+└──────────────────────────────────────────────────┘
+```
 
-5. Java 17
-   brew install openjdk@17
-   echo 'export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"' >> ~/.zshrc
-   source ~/.zshrc
+***
 
-6. Node-RED
-   brew install node
-   npm install -g --unsafe-perm node-red
+## 🔧 Prerequisites — Mac Setup
 
-7. Maven
-   brew install maven
+Install in this exact order:
 
-================================================================
-PART 1 — CONTIKI-NG + COOJA SETUP
-================================================================
+```bash
+# 1. Homebrew
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-Step 1: Clone
-   cd ~
-   git clone https://github.com/contiki-ng/contiki-ng.git
-   cd contiki-ng
-   git submodule update --init --recursive
+# 2. Git LFS (for large Contiki submodules)
+brew install git-lfs
+git lfs install
 
-   IF gecko_sdk fails, run this instead:
-   git submodule update --init tools/cooja
+# 3. Java 21 (for Cooja GUI + Akka)
+brew install openjdk@21
+echo 'export PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+java -version   # should print openjdk 21
 
-Step 2: Set Docker alias (run once)
-   echo 'export CNG_PATH=~/contiki-ng' >> ~/.zshrc
-   echo 'alias contiker="docker run --privileged --mount type=bind,source=$CNG_PATH,destination=/home/user/contiki-ng --sysctl net.ipv6.conf.all.disable_ipv6=0 -e DISPLAY=host.docker.internal:0 -ti contiker/contiki-ng"' >> ~/.zshrc
-   source ~/.zshrc
+# 4. Node.js + Node-RED
+brew install node
+npm install -g --unsafe-perm node-red
 
-Step 3: Pull Docker image
-   docker pull contiker/contiki-ng
+# 5. Maven (for Akka Java project)
+brew install maven
 
-Step 4: Enter container
-   contiker bash
-   → You will see: user@abc123:/home/user$
-   → WARNING about linux/amd64 vs arm64 is NORMAL on M1/M2/M3 — ignore it
+# 6. Docker Desktop
+# Download: https://www.docker.com/products/docker-desktop/
+# Open app and wait for whale icon in menu bar
+```
 
-Step 5: Launch Cooja
-   ON MAC TERMINAL (not inside Docker):
-   xhost +localhost
+***
 
-   INSIDE DOCKER:
-   cd ~/contiki-ng/tools/cooja
-   ./gradlew run
+## 🌱 Part 1 — Contiki-NG + Cooja Setup
 
-Step 6: Fix if Cooja window does not open
-   exit
-   xhost +localhost
-   docker run --privileged \
-     --mount type=bind,source=/Users/vivek/contiki-ng,destination=/home/user/contiki-ng \
-     --sysctl net.ipv6.conf.all.disable_ipv6=0 \
-     -e DISPLAY=host.docker.internal:0 \
-     -ti contiker/contiki-ng bash
-   cd ~/contiki-ng/tools/cooja && ./gradlew run
+### Clone the Repository
 
-================================================================
-PART 2 — BUILD IOT NODES IN COOJA
-================================================================
+```bash
+cd ~
+git clone https://github.com/contiki-ng/contiki-ng.git
+cd contiki-ng
+# If full submodule fails due to gecko_sdk, run this instead:
+git submodule update --init tools/cooja
+```
 
-Network to create:
-- 1 Root/Border Router node (all traffic goes here)
-- 3+ Sensor nodes (form RPL tree, send periodic messages)
+### Set Docker Alias (for C firmware compilation only)
 
-Build sensor node (inside Docker):
-   cd ~/contiki-ng/examples/udp-client
-   make TARGET=cooja
+```bash
+echo 'export CNG_PATH=~/contiki-ng' >> ~/.zshrc
+echo 'alias contiker="docker run --privileged \
+  --mount type=bind,source=$CNG_PATH,destination=/home/user/contiki-ng \
+  --sysctl net.ipv6.conf.all.disable_ipv6=0 \
+  -ti contiker/contiki-ng"' >> ~/.zshrc
+source ~/.zshrc
 
-What your sensor node C code must do:
-   1. Send periodic UDP messages to root every T seconds
-   2. Detect parent change → notify Node-RED via UDP
-      Send: {"nodeId":"1","event":"parent_change","newParent":"fd00::203"}
-   3. Listen for period change commands from Node-RED
-      Receive: {"nodeId":"1","event":"set_period","newPeriod":2000}
-   4. Support crash simulation (stop radio or infinite loop)
+# Pull the Docker image
+docker pull contiker/contiki-ng
+```
 
-Create simulation in Cooja GUI:
-   File → New Simulation → name it
-   Motes → Add motes → Sky mote → load your .cooja file
-   Add 1 root + 3-5 sensor nodes
-   Press Start → nodes auto-form RPL tree
+### Launch Cooja GUI — On Mac Directly (NO Docker!)
 
-================================================================
-PART 3 — AKKA DIGITAL TWIN
-================================================================
+```bash
+cd ~/contiki-ng/tools/cooja
+./gradlew run
+```
 
-pom.xml dependency:
-   <dependency>
-       <groupId>com.typesafe.akka</groupId>
-       <artifactId>akka-actor_2.13</artifactId>
-       <version>2.8.0</version>
-   </dependency>
+> ✅ Cooja is a Java app. Run it natively on Mac.  
+> 🐳 Docker is **only** used to compile C firmware — not for the GUI.
 
-IoTNodeActor.java:
-   public class IoTNodeActor extends AbstractActor {
-       private String nodeId;
-       private String currentParent;
-       private List<String> lastKParents;
-       private int messagePeriod;
+***
 
-       public Receive createReceive() {
-           return receiveBuilder()
-               .match(ParentChangedMsg.class, this::onParentChanged)
-               .match(AppMessageMsg.class,    this::onAppMessage)
-               .match(SetPeriodMsg.class,     this::onSetPeriod)
-               .match(CrashMsg.class,         this::onCrash)
-               .build();
-       }
+## 📡 Part 2 — Sensor Node C Code
 
-       private void onParentChanged(ParentChangedMsg msg) {
-           lastKParents.add(0, currentParent);
-           if (lastKParents.size() > K) lastKParents.remove(lastKParents.size()-1);
-           currentParent = msg.newParent;
-       }
+### Create Project Folder
 
-       private void onCrash(CrashMsg msg) {
-           throw new RuntimeException("Node crashed!");
-       }
-   }
+```bash
+cd ~/contiki-ng/examples
+mkdir iot-node && cd iot-node
+```
 
-SupervisorActor.java:
-   public SupervisorStrategy supervisorStrategy() {
-       return new OneForOneStrategy(
-           DeciderBuilder
-               .match(Exception.class, e -> SupervisorStrategy.restart())
-               .build()
-       );
-   }
+### Makefile
 
-================================================================
-PART 4 — NODE-RED FLOWS
-================================================================
+```makefile
+CONTIKI_PROJECT = iot-node
+all: $(CONTIKI_PROJECT)
+CONTIKI = ../..
+include $(CONTIKI)/Makefile.include
+```
 
-Start Node-RED:
-   node-red
-   Open browser: http://localhost:1880
+### iot-node.c
 
-Flow 1 — Parent Change (Cooja to Akka):
-   [UDP In :5005] → [JSON] → [Function] → [HTTP POST to Akka]
+```c
+#include "contiki.h"
+#include "net/routing/routing.h"
+#include "net/netstack.h"
+#include "net/ipv6/simple-udp.h"
+#include "net/routing/rpl-lite/rpl.h"
+#include "sys/log.h"
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-Flow 2 — App Message (Cooja to Akka):
-   [UDP In :5006] → [JSON] → [Function] → [HTTP POST to Akka]
+#define LOG_MODULE "IoT-Node"
+#define LOG_LEVEL  LOG_LEVEL_INFO
 
-Flow 3 — Set Period (Akka to Cooja):
-   [HTTP In /setPeriod] → [Function] → [UDP Out to Cooja]
+#define UDP_SERVER_PORT  5678   /* root listens here       */
+#define NODERED_PORT     5005   /* Node-RED listens here   */
+#define CMD_PORT         5010   /* this node listens here  */
+#define DEFAULT_PERIOD   5      /* seconds between sends   */
 
-Flow 4 — Crash (Cooja to both systems):
-   [UDP In :5007] → [JSON] → [HTTP POST crash to Akka]
-                           → [UDP command restart to Cooja]
+static struct simple_udp_connection udp_to_root;
+static struct simple_udp_connection udp_to_nodered;
+static struct simple_udp_connection udp_cmd_listener;
 
-UDP message formats:
-   Parent change:  {"nodeId":"1","event":"parent_change","newParent":"fd00::203","oldParent":"fd00::201"}
-   App message:    {"nodeId":"1","event":"app_message","destination":"fd00::1"}
-   Set period:     {"nodeId":"1","event":"set_period","newPeriod":2000}
-   Crash:          {"nodeId":"1","event":"crash"}
+static uip_ipaddr_t root_addr;
+static uip_ipaddr_t nodered_addr;
+static uip_ipaddr_t last_parent_addr;
 
-================================================================
-PROJECT FOLDER STRUCTURE
-================================================================
+static int send_period = DEFAULT_PERIOD;
+static int node_id = 1; /* ← CHANGE THIS: 1, 2, or 3 per node */
 
+/* Convert IP to string */
+static char ip_buf[40];
+static char *ipaddr_to_str(const uip_ipaddr_t *addr) {
+  snprintf(ip_buf, sizeof(ip_buf),
+    "%02x%02x:%02x%02x:%02x%02x:%02x%02x",
+    addr->u8[8],  addr->u8[9],
+    addr->u8[10], addr->u8[11],
+    addr->u8[12], addr->u8[13],
+    addr->u8[14], addr->u8[15]);
+  return ip_buf;
+}
+
+static int ipaddr_equal(const uip_ipaddr_t *a, const uip_ipaddr_t *b) {
+  return memcmp(a, b, sizeof(uip_ipaddr_t)) == 0;
+}
+
+/* Receive commands from Node-RED */
+static void cmd_rx_callback(struct simple_udp_connection *c,
+  const uip_ipaddr_t *sender_addr, uint16_t sender_port,
+  const uip_ipaddr_t *receiver_addr, uint16_t receiver_port,
+  const uint8_t *data, uint16_t datalen)
+{
+  char buf[64];
+  memcpy(buf, data, datalen < 63 ? datalen : 63);
+  buf[datalen < 63 ? datalen : 63] = '\0';
+  LOG_INFO("CMD received: %s\n", buf);
+
+  char *p = strstr(buf, "newPeriod");
+  if(p != NULL) {
+    p = strchr(p, ':');
+    if(p != NULL) {
+      int new_period = atoi(p + 1);
+      if(new_period > 0 && new_period < 3600) {
+        send_period = new_period;
+        LOG_INFO("Period updated to %d sec\n", send_period);
+      }
+    }
+  }
+}
+
+PROCESS(iot_node_process, "IoT Node Process");
+AUTOSTART_PROCESSES(&iot_node_process);
+
+PROCESS_THREAD(iot_node_process, ev, data)
+{
+  static struct etimer timer;
+  static char msg_buf[128];
+  static char notify_buf[200];
+  uip_ipaddr_t current_parent;
+  rpl_dag_t *dag;
+
+  PROCESS_BEGIN();
+
+  /* Node-RED machine IPv6 address — update if needed */
+  uip_ip6addr(&nodered_addr, 0xfd00,0,0,0,0,0,0,0x0001);
+
+  simple_udp_register(&udp_to_root,      0,        NULL, UDP_SERVER_PORT, NULL);
+  simple_udp_register(&udp_to_nodered,   0,        NULL, NODERED_PORT,    NULL);
+  simple_udp_register(&udp_cmd_listener, CMD_PORT, NULL, 0, cmd_rx_callback);
+
+  memset(&last_parent_addr, 0, sizeof(last_parent_addr));
+  LOG_INFO("Node %d started. Period = %d sec\n", node_id, send_period);
+
+  /* Wait for network to form */
+  etimer_set(&timer, CLOCK_SECOND * 10);
+  PROCESS_WAIT_UNTIL(etimer_expired(&timer));
+
+  while(1) {
+
+    /* --- CHECK FOR PARENT CHANGE --- */
+    dag = rpl_get_any_dag();
+    if(dag != NULL && dag->preferred_parent != NULL) {
+      uip_ipaddr_copy(&current_parent,
+        rpl_parent_get_ipaddr(dag->preferred_parent));
+
+      if(!ipaddr_equal(&current_parent, &last_parent_addr)) {
+        LOG_INFO("Parent changed to: %s\n", ipaddr_to_str(&current_parent));
+
+        snprintf(notify_buf, sizeof(notify_buf),
+          "{\"nodeId\":%d,\"event\":\"parent_change\","
+          "\"newParent\":\"%s\",\"oldParent\":\"%s\"}",
+          node_id,
+          ipaddr_to_str(&current_parent),
+          ipaddr_to_str(&last_parent_addr));
+
+        simple_udp_sendto(&udp_to_nodered,
+          notify_buf, strlen(notify_buf), &nodered_addr);
+
+        uip_ipaddr_copy(&last_parent_addr, &current_parent);
+      }
+    }
+
+    /* --- SEND DUMMY TRAFFIC TO ROOT --- */
+    if(NETSTACK_ROUTING.node_is_reachable()) {
+      NETSTACK_ROUTING.get_root_ipaddr(&root_addr);
+
+      snprintf(msg_buf, sizeof(msg_buf),
+        "{\"nodeId\":%d,\"event\":\"app_message\",\"seq\":%lu}",
+        node_id, (unsigned long)clock_time());
+
+      LOG_INFO("Sending to root: %s\n", msg_buf);
+      simple_udp_sendto(&udp_to_root,
+        msg_buf, strlen(msg_buf), &root_addr);
+      simple_udp_sendto(&udp_to_nodered,
+        msg_buf, strlen(msg_buf), &nodered_addr);
+    }
+
+    /* --- WAIT T SECONDS --- */
+    etimer_set(&timer, CLOCK_SECOND * send_period);
+    PROCESS_WAIT_UNTIL(etimer_expired(&timer));
+  }
+
+  PROCESS_END();
+}
+```
+
+### Compile (inside Docker — for each node)
+
+```bash
+# Enter Docker
+contiker bash
+
+# Compile
+cd ~/contiki-ng/examples/iot-node
+make TARGET=cooja
+
+# Exit Docker
+exit
+```
+
+> Change `node_id = 1` to `2` or `3` and recompile for each node.  
+> Output: `iot-node.cooja`
+
+***
+
+## 🖥️ Part 3 — Cooja Simulation
+
+```
+1. Open Cooja:    cd ~/contiki-ng/tools/cooja && ./gradlew run
+2. New sim:       File → New Simulation → name: digital-twin
+3. Add root:      Motes → Add Motes → Sky Mote
+                  → load: examples/rpl-border-router/border-router.cooja
+                  → count: 1
+4. Add sensors:   Motes → Add Motes → Sky Mote
+                  → load: examples/iot-node/iot-node.cooja
+                  → count: 3
+5. Start:         Press Start button
+6. Watch:         Network window shows RPL tree forming
+7. Crash a node:  Right-click node → Stop mote
+```
+
+***
+
+## 🎭 Part 4 — Akka Digital Twin
+
+### Create Maven Project
+
+```bash
+mvn archetype:generate \
+  -DgroupId=it.polimi.nsds \
+  -DartifactId=digital-twin \
+  -DarchetypeArtifactId=maven-archetype-quickstart \
+  -DinteractiveMode=false
+cd digital-twin
+```
+
+### pom.xml — Add Akka
+
+```xml
+<dependency>
+    <groupId>com.typesafe.akka</groupId>
+    <artifactId>akka-actor_2.13</artifactId>
+    <version>2.8.0</version>
+</dependency>
+```
+
+### Messages.java
+
+```java
+package it.polimi.nsds;
+
+public class Messages {
+    public static class ParentChangedMsg {
+        public final String nodeId, newParent, oldParent;
+        public ParentChangedMsg(String nodeId, String newParent, String oldParent) {
+            this.nodeId = nodeId; this.newParent = newParent; this.oldParent = oldParent;
+        }
+    }
+    public static class AppMessageMsg {
+        public final String nodeId; public final long seq;
+        public AppMessageMsg(String nodeId, long seq) { this.nodeId = nodeId; this.seq = seq; }
+    }
+    public static class SetPeriodMsg {
+        public final String nodeId; public final int newPeriod;
+        public SetPeriodMsg(String nodeId, int newPeriod) { this.nodeId = nodeId; this.newPeriod = newPeriod; }
+    }
+    public static class CrashMsg {
+        public final String nodeId;
+        public CrashMsg(String nodeId) { this.nodeId = nodeId; }
+    }
+}
+```
+
+### IoTNodeActor.java
+
+```java
+package it.polimi.nsds;
+
+import akka.actor.AbstractActor;
+import akka.actor.Props;
+import java.util.ArrayList;
+import java.util.List;
+
+public class IoTNodeActor extends AbstractActor {
+
+    private final String nodeId;
+    private String currentParent = "";
+    private final List<String> lastKParents = new ArrayList<>();
+    private int messagePeriod;
+    private static final int K = 3;
+
+    public IoTNodeActor(String nodeId, int initialPeriod) {
+        this.nodeId = nodeId;
+        this.messagePeriod = initialPeriod;
+    }
+
+    public static Props props(String nodeId, int period) {
+        return Props.create(IoTNodeActor.class, nodeId, period);
+    }
+
+    @Override
+    public Receive createReceive() {
+        return receiveBuilder()
+            .match(Messages.ParentChangedMsg.class, this::onParentChanged)
+            .match(Messages.AppMessageMsg.class,    this::onAppMessage)
+            .match(Messages.SetPeriodMsg.class,     this::onSetPeriod)
+            .match(Messages.CrashMsg.class,         this::onCrash)
+            .build();
+    }
+
+    private void onParentChanged(Messages.ParentChangedMsg msg) {
+        System.out.println("[" + nodeId + "] Parent: " + currentParent + " → " + msg.newParent);
+        if (!currentParent.isEmpty()) {
+            lastKParents.add(0, currentParent);
+            if (lastKParents.size() > K) lastKParents.remove(lastKParents.size() - 1);
+        }
+        currentParent = msg.newParent;
+    }
+
+    private void onAppMessage(Messages.AppMessageMsg msg) {
+        System.out.println("[" + nodeId + "] App message mimicked. seq=" + msg.seq);
+    }
+
+    private void onSetPeriod(Messages.SetPeriodMsg msg) {
+        System.out.println("[" + nodeId + "] Period: " + messagePeriod + " → " + msg.newPeriod);
+        messagePeriod = msg.newPeriod;
+        // Node-RED will forward this command to the real Contiki node
+    }
+
+    private void onCrash(Messages.CrashMsg msg) {
+        System.out.println("[" + nodeId + "] CRASH!");
+        throw new RuntimeException("Node " + nodeId + " crashed!");
+    }
+}
+```
+
+### SupervisorActor.java
+
+```java
+package it.polimi.nsds;
+
+import akka.actor.*;
+import akka.japi.pf.DeciderBuilder;
+import java.util.HashMap;
+import java.util.Map;
+
+public class SupervisorActor extends AbstractActor {
+
+    private final Map<String, ActorRef> nodeActors = new HashMap<>();
+
+    public static Props props() { return Props.create(SupervisorActor.class); }
+
+    @Override
+    public SupervisorStrategy supervisorStrategy() {
+        return new OneForOneStrategy(
+            DeciderBuilder
+                .match(RuntimeException.class, e -> {
+                    System.out.println("Supervisor: restarting crashed actor...");
+                    return SupervisorStrategy.restart();
+                })
+                .matchAny(e -> SupervisorStrategy.escalate())
+                .build()
+        );
+    }
+
+    @Override
+    public void preStart() {
+        for (int i = 1; i <= 3; i++) {
+            String id = "node" + i;
+            nodeActors.put(id, getContext().actorOf(IoTNodeActor.props(id, 5), id));
+            System.out.println("Digital twin created: " + id);
+        }
+    }
+
+    @Override
+    public Receive createReceive() {
+        return receiveBuilder()
+            .match(Messages.ParentChangedMsg.class, msg -> forward(msg.nodeId, msg))
+            .match(Messages.AppMessageMsg.class,    msg -> forward(msg.nodeId, msg))
+            .match(Messages.SetPeriodMsg.class,     msg -> forward(msg.nodeId, msg))
+            .match(Messages.CrashMsg.class,         msg -> forward(msg.nodeId, msg))
+            .build();
+    }
+
+    private void forward(String nodeId, Object msg) {
+        ActorRef actor = nodeActors.get(nodeId);
+        if (actor != null) actor.tell(msg, getSelf());
+    }
+}
+```
+
+### Main.java
+
+```java
+package it.polimi.nsds;
+
+import akka.actor.*;
+
+public class Main {
+    public static void main(String[] args) throws InterruptedException {
+        ActorSystem system = ActorSystem.create("DigitalTwinSystem");
+        system.actorOf(SupervisorActor.props(), "supervisor");
+        System.out.println("Digital Twin System running. Waiting for Node-RED...");
+        Thread.sleep(Long.MAX_VALUE);
+    }
+}
+```
+
+### Run Akka
+
+```bash
+mvn compile
+mvn exec:java -Dexec.mainClass="it.polimi.nsds.Main"
+```
+
+***
+
+## 🔴 Part 5 — Node-RED Flows
+
+### Start Node-RED
+
+```bash
+node-red
+# Open: http://localhost:1880
+```
+
+### Flow 1 — Parent Change (Cooja → Akka)
+
+```
+[UDP In :5005] → [JSON] → [Function] → [HTTP Request POST]
+```
+
+**Function node code:**
+```javascript
+msg.url = "http://localhost:8080/parentChanged";
+msg.method = "POST";
+msg.payload = {
+    nodeId: msg.payload.nodeId,
+    newParent: msg.payload.newParent,
+    oldParent: msg.payload.oldParent
+};
+return msg;
+```
+
+### Flow 2 — App Message (Cooja → Akka)
+
+```
+[UDP In :5006] → [JSON] → [HTTP Request POST to localhost:8080/appMessage]
+```
+
+### Flow 3 — Set Period (Akka → Cooja)
+
+```
+[HTTP In POST /setPeriod] → [Function] → [UDP Out → Cooja node :5010]
+```
+
+**Function node code:**
+```javascript
+msg.payload = JSON.stringify({
+    nodeId: msg.payload.nodeId,
+    event: "set_period",
+    newPeriod: msg.payload.newPeriod
+});
+return msg;
+```
+
+### Flow 4 — Crash (Cooja → Both Systems)
+
+```
+[UDP In :5007] → [JSON] → [HTTP Request POST to localhost:8080/crash]
+```
+
+### UDP Message Format Reference
+
+```json
+// Parent change  (Contiki → Node-RED)
+{"nodeId":"1","event":"parent_change","newParent":"fd00::203","oldParent":"fd00::201"}
+
+// App message    (Contiki → Node-RED)
+{"nodeId":"1","event":"app_message","seq":12345}
+
+// Set period     (Node-RED → Contiki)
+{"nodeId":"1","event":"set_period","newPeriod":3}
+
+// Crash          (Contiki → Node-RED)
+{"nodeId":"1","event":"crash"}
+```
+
+***
+
+## 🗂️ Project Structure
+
+```
 project2-digital-twin/
 ├── README.md
 ├── contiki/
@@ -233,60 +612,54 @@ project2-digital-twin/
 │   └── simulation.csc
 ├── akka/
 │   ├── pom.xml
-│   └── src/main/java/
+│   └── src/main/java/it/polimi/nsds/
 │       ├── Main.java
-│       ├── IoTNodeActor.java
 │       ├── SupervisorActor.java
-│       └── messages/
+│       ├── IoTNodeActor.java
+│       └── Messages.java
 ├── nodered/
 │   └── flows.json
 └── docs/
     └── design-document.pdf
+```
 
-================================================================
-REQUIREMENTS CHECKLIST
-================================================================
+***
 
-[ ] Parent change in Contiki mirrored in Akka actor
-[ ] App message flow in Contiki mimicked in Akka network
-[ ] Changing T in Akka reflected in real Contiki node
-[ ] Node crash in Contiki mirrored in actor + recovery in both
-[ ] Node-RED can be swapped to change digital twin logic
-[ ] Demo runs on 2+ laptops or VMs
-[ ] 4-page design document ready
+## 🚨 Common Errors & Fixes (Mac)
 
-================================================================
-COMMON MAC ERRORS AND FIXES
-================================================================
+| Error | Fix |
+|---|---|
+| `Cannot connect to Docker daemon` | Open Docker Desktop, wait for whale icon |
+| `git-lfs: command not found` | `brew install git-lfs && git lfs install` |
+| `Can't connect to X11 window server` | Run Cooja natively on Mac — no Docker for GUI |
+| `No such file or directory` in Docker | Use full path `/Users/yourname/contiki-ng` |
+| `WARNING platform linux/amd64 mismatch` | Normal on M1/M2/M3 Mac — ignore it |
+| Cooja window black or frozen | Slow on M-chips — wait 30 seconds |
+| `make: command not found` in Docker | `sudo apt-get install build-essential` |
 
-Cannot connect to Docker daemon
-→ Open Docker Desktop app first
+***
 
-git-lfs: command not found
-→ brew install git-lfs && git lfs install
+## ✅ Requirements Checklist
 
-Can't connect to X11 window server
-→ Open XQuartz, enable network clients, run: xhost +localhost
+- [ ] Parent change in Contiki → mirrored in Akka (`currentParent` + `lastKParents` updated)
+- [ ] App message in Contiki → mimicked in Akka actor network
+- [ ] Changing period `T` in Akka → reflected in real Contiki node via Node-RED
+- [ ] Node crash in Contiki → mirrored in actor, supervisor recovers both
+- [ ] Node-RED flows can be swapped to change digital twin logic
+- [ ] Demo runs on **2+ laptops or VMs**
+- [ ] **4-page design document** ready for submission
 
-No such file or directory: contiki-ng
-→ Use full path: /Users/vivek/contiki-ng in Docker command
+***
 
-WARNING platform linux/amd64 mismatch
-→ Normal on M1/M2/M3 Mac — ignore it
+## 📬 Submission
 
-Cooja window black or frozen
-→ Docker emulation is slow on M-chips — wait 30 seconds
+Email **both** instructors at least **2 weeks** before your presentation:
 
-================================================================
-SUBMISSION
-================================================================
+- 📧 luca.mottola@polimi.it
+- 📧 alessandro.margara@polimi.it
 
-Email BOTH instructors:
-  luca.mottola@polimi.it
-  alessandro.margara@polimi.it
+Attach: **complete source code** + **4-page design document per project**
 
-At least 2 weeks before your presentation date.
-Attach: complete source code + 4-page design document.
-Demo must run on 2+ machines.
+***
 
-NSDS Project 2 — Polimi — A.Y. 2025/2026
+*NSDS Project 2 | Politecnico di Milano | A.Y. 2025/2026*
