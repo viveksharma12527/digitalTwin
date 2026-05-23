@@ -64,7 +64,81 @@ This project implements a **real-time Digital Twin** of an IoT low-power wireles
 
 ---
 
-## 🚀 Setup & Execution Guide
+## � Prerequisites (macOS)
+
+Before you begin, install these dependencies:
+
+### 1. Homebrew
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+### 2. Git LFS
+```bash
+brew install git-lfs
+git lfs install
+```
+
+### 3. Docker Desktop
+- Download: https://www.docker.com/products/docker-desktop/
+- Open the app and wait for the whale icon to appear in the menu bar
+
+### 4. XQuartz (for Cooja GUI on Mac) ⚠️ IMPORTANT
+```bash
+brew install --cask xquartz
+```
+**After installation, RESTART your Mac.** Then:
+- Open XQuartz → Preferences → Security
+- ✅ CHECK "Allow connections from network clients"
+
+### 5. Java 17
+```bash
+brew install openjdk@17
+echo 'export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### 6. Node-RED
+```bash
+brew install node
+npm install -g --unsafe-perm node-red
+```
+
+### 7. Maven
+```bash
+brew install maven
+```
+
+### 8. Contiki-NG + Cooja
+```bash
+cd ~
+git clone https://github.com/contiki-ng/contiki-ng.git
+cd contiki-ng
+git submodule update --init --recursive
+```
+
+**If gecko_sdk fails**, run this instead:
+```bash
+git submodule update --init tools/cooja
+```
+
+#### Set Docker Alias (run once)
+```bash
+echo 'export CNG_PATH=~/contiki-ng' >> ~/.zshrc
+echo 'alias contiker="docker run --privileged --mount type=bind,source=$CNG_PATH,destination=/home/user/contiki-ng --sysctl net.ipv6.conf.all.disable_ipv6=0 -e DISPLAY=host.docker.internal:0 -ti contiker/contiki-ng"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+#### Pull Contiki-NG Docker Image
+```bash
+docker pull contiker/contiki-ng
+```
+
+**Note:** On M1/M2/M3 Macs, Docker will warn about `linux/amd64` vs `arm64` — this is normal and can be ignored.
+
+---
+
+## �🚀 Setup & Execution Guide
 
 Follow these steps in exact chronological order:
 
@@ -90,13 +164,52 @@ Ensure your Docker Desktop is running and compiling is performed inside the offi
 
 ### 2. Start Cooja Simulator (Native Mac)
 Do not start Cooja inside Docker. On macOS, run it natively to enable the Java Swing GUI.
-1. Launch Cooja:
-   ```bash
-   cd ~/contiki-ng/tools/cooja
-   ./gradlew run
-   ```
-2. In the Cooja GUI, select **File ➔ Open simulation** and choose `project2-digital-twin/contiki/simulation.csc`.
-3. Press **Start** to run the RPL low-power network simulation.
+
+⚠️ **Before launching Cooja**, enable X11 connections:
+```bash
+xhost +localhost
+```
+
+Then launch Cooja:
+```bash
+cd ~/contiki-ng/tools/cooja
+./gradlew run
+```
+
+In the Cooja GUI:
+1. Select **File ➔ Open simulation** and choose `project2-digital-twin/contiki/simulation.csc`
+2. Press **Start** to run the RPL low-power network simulation
+
+**Troubleshooting:** If the Cooja window does not open, exit and retry:
+```bash
+exit
+xhost +localhost
+docker run --privileged \
+  --mount type=bind,source=$CNG_PATH,destination=/home/user/contiki-ng \
+  --sysctl net.ipv6.conf.all.disable_ipv6=0 \
+  -e DISPLAY=host.docker.internal:0 \
+  -ti contiker/contiki-ng bash
+cd ~/contiki-ng/tools/cooja && ./gradlew run
+```
+
+### 2b. Build Network in Cooja GUI
+Once Cooja is open, create the RPL network topology:
+
+1. In the Cooja GUI, select **File ➔ New Simulation**
+2. Give it a name (e.g., `digitalTwin-network`)
+3. Add motes:
+   - Go to **Motes ➔ Add motes ➔ Sky mote**
+   - Load the compiled firmware from `~/contiki-ng/examples/iot-node/project2-digital-twin/contiki/iot-node/iot-node.cooja`
+   - Add **1 Root/Border Router node** (this collects all traffic)
+   - Add **3+ Sensor nodes** (they will automatically form an RPL tree)
+4. Start the simulation: Press **Start**
+5. Nodes automatically form an RPL tree with the Root at the top
+
+**Sensor Node Capabilities:**
+- Send periodic UDP messages to the root every T seconds
+- Detect parent changes and notify Node-RED via UDP: `{"nodeId":"1","event":"parent_change","newParent":"fd00::203"}`
+- Listen for period change commands from Node-RED: `{"nodeId":"1","event":"set_period","newPeriod":2000}`
+- Support crash simulation (stop radio or trigger infinite loop)
 
 ### 3. Start Akka Digital Twin
 1. Navigate to the Akka directory:
