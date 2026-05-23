@@ -1,0 +1,223 @@
+[
+    {
+        "id": "digital_twin_flow",
+        "type": "tab",
+        "label": "Digital Twin Orchestration",
+        "disabled": false,
+        "info": "NSDS Project 2 - Digital Twin Orchestration Flow\nCoordinates the real Cooja simulator world with the Akka digital twin system."
+    },
+    {
+        "id": "udp_in_5005",
+        "type": "udp in",
+        "z": "digital_twin_flow",
+        "name": "UDP In (Cooja Port 5005)",
+        "server": "udp6",
+        "port": "5005",
+        "format": "utf8",
+        "x": 160,
+        "y": 180,
+        "wires": [
+            [
+                "json_parser"
+            ]
+        ]
+    },
+    {
+        "id": "json_parser",
+        "type": "json",
+        "z": "digital_twin_flow",
+        "name": "Parse JSON",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 370,
+        "y": 180,
+        "wires": [
+            [
+                "orchestrator_node"
+            ]
+        ]
+    },
+    {
+        "id": "orchestrator_node",
+        "type": "function",
+        "z": "digital_twin_flow",
+        "name": "Orchestrator & IP Tracker",
+        "func": "// 1. Dynamically track the node's IPv6 address from incoming UDP packets\nif (msg.payload && msg.payload.nodeId) {\n    var nodeId = msg.payload.nodeId;\n    var nodeIp = msg.ip;\n    flow.set(\"node_ip_\" + nodeId, nodeIp);\n    node.log(\"Tracked node \" + nodeId + \" with IPv6: \" + nodeIp);\n}\n\n// 2. Dispatch the event to the correct Akka HTTP endpoint\nvar event = msg.payload.event;\nif (event === \"parent_change\") {\n    msg.url = \"http://localhost:8080/parentChanged\";\n    msg.method = \"POST\";\n    msg.payload = {\n        nodeId: msg.payload.nodeId.toString(),\n        newParent: msg.payload.newParent,\n        oldParent: msg.payload.oldParent || \"\"\n    };\n    return [msg, null, null];\n} else if (event === \"app_message\") {\n    msg.url = \"http://localhost:8080/appMessage\";\n    msg.method = \"POST\";\n    msg.payload = {\n        nodeId: msg.payload.nodeId.toString(),\n        seq: msg.payload.seq\n    };\n    return [null, msg, null];\n} else if (event === \"crash\") {\n    msg.url = \"http://localhost:8080/crash\";\n    msg.method = \"POST\";\n    msg.payload = {\n        nodeId: msg.payload.nodeId.toString()\n    };\n    return [null, null, msg];\n}\n\nreturn null;",
+        "outputs": 3,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 610,
+        "y": 180,
+        "wires": [
+            [
+                "http_post_parent"
+            ],
+            [
+                "http_post_app"
+            ],
+            [
+                "http_post_crash"
+            ]
+        ]
+    },
+    {
+        "id": "http_post_parent",
+        "type": "http request",
+        "z": "digital_twin_flow",
+        "name": "Akka /parentChanged",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://localhost:8080/parentChanged",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 880,
+        "y": 120,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "http_post_app",
+        "type": "http request",
+        "z": "digital_twin_flow",
+        "name": "Akka /appMessage",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://localhost:8080/appMessage",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 880,
+        "y": 180,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "http_post_crash",
+        "type": "http request",
+        "z": "digital_twin_flow",
+        "name": "Akka /crash",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://localhost:8080/crash",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 860,
+        "y": 240,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "http_in_set_period",
+        "type": "http in",
+        "z": "digital_twin_flow",
+        "name": "POST /setPeriod",
+        "url": "/setPeriod",
+        "method": "post",
+        "upload": true,
+        "swaggerDoc": "",
+        "x": 140,
+        "y": 380,
+        "wires": [
+            [
+                "set_period_command"
+            ]
+        ]
+    },
+    {
+        "id": "set_period_command",
+        "type": "function",
+        "z": "digital_twin_flow",
+        "name": "Build UDP Cmd & Route IP",
+        "func": "var nodeId = msg.payload.nodeId;\nvar newPeriod = msg.payload.newPeriod;\n\n// 1. Retrieve the dynamically tracked IPv6 address for this node\n// Fallback pattern to fd00::202, fd00::203, fd00::204 etc. if no packet has been tracked yet\nvar defaultIp = \"fd00::20\" + nodeId;\nvar targetIp = flow.get(\"node_ip_\" + nodeId) || defaultIp;\n\n// 2. Prepare payload exactly as expected by C firmware callback (newPeriod:T)\nmsg.ip = targetIp;\nmsg.port = 5010;\nmsg.payload = \"newPeriod:\" + newPeriod;\n\nnode.log(\"Routing command for node \" + nodeId + \" to \" + targetIp + \":5010 - payload: \" + msg.payload);\n\n// 3. Keep a copy for HTTP response and routing to Akka\nvar akkaMsg = {\n    url: \"http://localhost:8080/setPeriod\",\n    method: \"POST\",\n    payload: {\n        nodeId: nodeId.toString(),\n        newPeriod: parseInt(newPeriod)\n    }\n};\n\nvar httpResponse = {\n    payload: {\n        status: \"success\",\n        nodeId: nodeId,\n        targetIp: targetIp,\n        newPeriod: newPeriod\n    }\n};\n\nreturn [msg, akkaMsg, httpResponse];",
+        "outputs": 3,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 420,
+        "y": 380,
+        "wires": [
+            [
+                "udp_out_5010"
+            ],
+            [
+                "http_post_akka_period"
+            ],
+            [
+                "http_response_set_period"
+            ]
+        ]
+    },
+    {
+        "id": "udp_out_5010",
+        "type": "udp out",
+        "z": "digital_twin_flow",
+        "name": "UDP Out (Cooja Port 5010)",
+        "addr": "",
+        "iface": "",
+        "port": "5010",
+        "ipv": "udp6",
+        "outport": "",
+        "base64": false,
+        "multicast": "false",
+        "x": 720,
+        "y": 340,
+        "wires": []
+    },
+    {
+        "id": "http_post_akka_period",
+        "type": "http request",
+        "z": "digital_twin_flow",
+        "name": "Akka /setPeriod",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://localhost:8080/setPeriod",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 700,
+        "y": 400,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "http_response_set_period",
+        "type": "http response",
+        "z": "digital_twin_flow",
+        "name": "HTTP Response 200",
+        "statusCode": "200",
+        "headers": {},
+        "x": 720,
+        "y": 460,
+        "wires": []
+    }
+]
