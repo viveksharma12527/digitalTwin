@@ -177,8 +177,16 @@ cd ~/contiki-ng/tools/cooja
 ```
 
 In the Cooja GUI:
-1. Select **File ➔ Open simulation** and choose `project2-digital-twin/contiki/simulation.csc`
-2. Press **Start** to run the RPL low-power network simulation
+1. Select **File ➔ Open simulation...** and choose `/Users/vivek/Documents/GitHub/MUTI/digitalTwin/contiki/simulation_mac.csc` (this will automatically launch the **Serial Socket Server** plugin on port `60001`).
+2. Press the **Start/Pause** button in the top-left to run the simulation clock.
+
+#### 2a. Start the Serial Socket Tunnel (tunslip6)
+To let the Border Router receive its network prefix and form the wireless tree, open a **new** terminal tab or window on your Mac and run:
+```bash
+cd ~/contiki-ng/tools/serial-io
+sudo ./tunslip6 -a 127.0.0.1 -p 60001 fd00::1/64
+```
+*(Enter your macOS user password when prompted. Once connected, Node 1 will stop waiting for prefix and the network DODAG tree will form instantly!)*
 
 **Troubleshooting:** If the Cooja window does not open, exit and retry:
 ```bash

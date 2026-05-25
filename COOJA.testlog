@@ -1,0 +1,104 @@
+Random seed: 123456
+236000:2:[INFO: Main      ] Starting Contiki-NG-release/v5.1-115-gc1e1b97a9-dirty
+236000:2:[INFO: Main      ] - Routing: RPL Lite
+236000:2:[INFO: Main      ] - Net: sicslowpan
+236000:2:[INFO: Main      ] - MAC: CSMA
+236000:2:[INFO: Main      ] - 802.15.4 PANID: 0xabcd
+236000:2:[INFO: Main      ] - 802.15.4 Default channel: 26
+236000:2:[INFO: Main      ] Node ID: 2
+236000:2:[INFO: Main      ] Link-layer address: 0002.0002.0002.0002
+236000:2:[INFO: Main      ] Tentative link-local IPv6 address: fe80::202:2:2:2
+236000:2:[INFO: IoT-Node  ] Node 2 started. Period = 5 sec
+348000:4:[INFO: Main      ] Starting Contiki-NG-release/v5.1-115-gc1e1b97a9-dirty
+348000:4:[INFO: Main      ] - Routing: RPL Lite
+348000:4:[INFO: Main      ] - Net: sicslowpan
+348000:4:[INFO: Main      ] - MAC: CSMA
+348000:4:[INFO: Main      ] - 802.15.4 PANID: 0xabcd
+348000:4:[INFO: Main      ] - 802.15.4 Default channel: 26
+348000:4:[INFO: Main      ] Node ID: 4
+348000:4:[INFO: Main      ] Link-layer address: 0004.0004.0004.0004
+348000:4:[INFO: Main      ] Tentative link-local IPv6 address: fe80::204:4:4:4
+348000:4:[INFO: IoT-Node  ] Node 4 started. Period = 5 sec
+382000:1:[INFO: Main      ] Starting Contiki-NG-release/v5.1-115-gc1e1b97a9-dirty
+382000:1:[INFO: Main      ] - Routing: RPL Lite
+382000:1:[INFO: Main      ] - Net: sicslowpan
+382000:1:[INFO: Main      ] - MAC: CSMA
+382000:1:[INFO: Main      ] - 802.15.4 PANID: 0xabcd
+382000:1:[INFO: Main      ] - 802.15.4 Default channel: 26
+382000:1:[INFO: Main      ] Node ID: 1
+382000:1:[INFO: Main      ] Link-layer address: 0001.0001.0001.0001
+382000:1:[INFO: Main      ] Tentative link-local IPv6 address: fe80::201:1:1:1
+382000:1:[INFO: RPL BR    ] Contiki-NG Border Router started
+382000:1:[INFO: BR        ] RPL-Border router started
+899000:3:[INFO: Main      ] Starting Contiki-NG-release/v5.1-115-gc1e1b97a9-dirty
+899000:3:[INFO: Main      ] - Routing: RPL Lite
+899000:3:[INFO: Main      ] - Net: sicslowpan
+899000:3:[INFO: Main      ] - MAC: CSMA
+899000:3:[INFO: Main      ] - 802.15.4 PANID: 0xabcd
+899000:3:[INFO: Main      ] - 802.15.4 Default channel: 26
+899000:3:[INFO: Main      ] Node ID: 3
+899000:3:[INFO: Main      ] Link-layer address: 0003.0003.0003.0003
+899000:3:[INFO: Main      ] Tentative link-local IPv6 address: fe80::203:3:3:3
+899000:3:[INFO: IoT-Node  ] Node 3 started. Period = 5 sec
+1382000:1:?P[INFO: BR        ] Waiting for prefix
+2382000:1:?P[INFO: BR        ] Waiting for prefix
+3382000:1:?P[INFO: BR        ] Waiting for prefix
+4382000:1:?P[INFO: BR        ] Waiting for prefix
+5382000:1:?P[INFO: BR        ] Waiting for prefix
+6382000:1:?P[INFO: BR        ] Waiting for prefix
+7382000:1:?P[INFO: BR        ] Waiting for prefix
+8382000:1:?P[INFO: BR        ] Waiting for prefix
+9382000:1:?P[INFO: BR        ] Waiting for prefix
+10382000:1:?P[INFO: BR        ] Waiting for prefix
+11382000:1:?P[INFO: BR        ] Waiting for prefix
+12382000:1:?P[INFO: BR        ] Waiting for prefix
+13382000:1:?P[INFO: BR        ] Waiting for prefix
+14382000:1:?P[INFO: BR        ] Waiting for prefix
+15382000:1:?P[INFO: BR        ] Waiting for prefix
+16382000:1:?P[INFO: BR        ] Waiting for prefix
+17382000:1:?P[INFO: BR        ] Waiting for prefix
+18382000:1:?P[INFO: BR        ] Waiting for prefix
+19382000:1:?P[INFO: BR        ] Waiting for prefix
+20382000:1:?P[INFO: BR        ] Waiting for prefix
+21382000:1:?P[INFO: BR        ] Waiting for prefix
+22382000:1:?P[INFO: BR        ] Waiting for prefix
+23382000:1:?P[INFO: BR        ] Waiting for prefix
+24382000:1:?P[INFO: BR        ] Waiting for prefix
+25382000:1:?P[INFO: BR        ] Waiting for prefix
+26382000:1:?P[INFO: BR        ] Waiting for prefix
+27382000:1:?P[INFO: BR        ] Waiting for prefix
+28382000:1:?P[INFO: BR        ] Waiting for prefix
+29382000:1:?P[INFO: BR        ] Waiting for prefix
+30382000:1:?P[INFO: BR        ] Waiting for prefix
+31382000:1:?P[INFO: BR        ] Waiting for prefix
+32382000:1:?P[INFO: BR        ] Waiting for prefix
+33382000:1:?P[INFO: BR        ] Waiting for prefix
+34382000:1:?P[INFO: BR        ] Waiting for prefix
+35382000:1:?P[INFO: BR        ] Waiting for prefix
+36382000:1:?P[INFO: BR        ] Waiting for prefix
+37382000:1:?P[INFO: BR        ] Waiting for prefix
+38382000:1:?P[INFO: BR        ] Waiting for prefix
+39382000:1:?P[INFO: BR        ] Waiting for prefix
+40382000:1:?P[INFO: BR        ] Waiting for prefix
+41382000:1:?P[INFO: BR        ] Waiting for prefix
+42382000:1:?P[INFO: BR        ] Waiting for prefix
+43382000:1:?P[INFO: BR        ] Waiting for prefix
+44382000:1:?P[INFO: BR        ] Waiting for prefix
+45382000:1:?P[INFO: BR        ] Waiting for prefix
+46382000:1:?P[INFO: BR        ] Waiting for prefix
+47382000:1:?P[INFO: BR        ] Waiting for prefix
+48382000:1:?P[INFO: BR        ] Waiting for prefix
+49382000:1:?P[INFO: BR        ] Waiting for prefix
+50382000:1:?P[INFO: BR        ] Waiting for prefix
+51382000:1:?P[INFO: BR        ] Waiting for prefix
+52382000:1:?P[INFO: BR        ] Waiting for prefix
+53382000:1:?P[INFO: BR        ] Waiting for prefix
+54382000:1:?P[INFO: BR        ] Waiting for prefix
+55382000:1:?P[INFO: BR        ] Waiting for prefix
+56382000:1:?P[INFO: BR        ] Waiting for prefix
+57382000:1:?P[INFO: BR        ] Waiting for prefix
+58382000:1:?P[INFO: BR        ] Waiting for prefix
+59382000:1:?P[INFO: BR        ] Waiting for prefix
+TEST TIMEOUT
+TEST FAILED
+Test ended at simulation time: 60000000

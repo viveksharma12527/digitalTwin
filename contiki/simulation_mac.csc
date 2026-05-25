@@ -18,8 +18,8 @@
       org.contikios.cooja.contikimote.ContikiMoteType
       <identifier>mtype_br</identifier>
       <description>Border Router</description>
-      <source>[CONTIKI_DIR]/examples/rpl-border-router/border-router.c</source>
-      <commands>make -j$(CPUS) -C [CONTIKI_DIR]/examples/rpl-border-router border-router.cooja TARGET=cooja</commands>
+      <source>/Users/vivek/contiki-ng/examples/rpl-border-router/border-router.c</source>
+      <commands>make -j$(CPUS) -C /Users/vivek/contiki-ng/examples/rpl-border-router border-router.cooja TARGET=cooja</commands>
       <moteinterface>org.contikios.cooja.interfaces.Position</moteinterface>
       <moteinterface>org.contikios.cooja.interfaces.Battery</moteinterface>
       <moteinterface>org.contikios.cooja.contikimote.interfaces.ContikiVib</moteinterface>
@@ -42,8 +42,8 @@
       org.contikios.cooja.contikimote.ContikiMoteType
       <identifier>mtype_node</identifier>
       <description>IoT Node</description>
-      <source>[CONTIKI_DIR]/examples/iot-node/iot-node.c</source>
-      <commands>make -j$(CPUS) -C [CONTIKI_DIR]/examples/iot-node iot-node.cooja TARGET=cooja</commands>
+      <source>/Users/vivek/contiki-ng/examples/iot-node/iot-node.c</source>
+      <commands>make -j$(CPUS) -C /Users/vivek/contiki-ng/examples/iot-node iot-node.cooja TARGET=cooja</commands>
       <moteinterface>org.contikios.cooja.interfaces.Position</moteinterface>
       <moteinterface>org.contikios.cooja.interfaces.Battery</moteinterface>
       <moteinterface>org.contikios.cooja.contikimote.interfaces.ContikiVib</moteinterface>
