@@ -12,8 +12,12 @@
 #   ./run.sh logs      — Tail ALL service logs
 #   ./run.sh logs akka|nodered|cooja|tunslip  — Tail one log
 # =============================================================================
-
 set -euo pipefail
+
+# Force C locale for sed to prevent macOS Assertion failed (advance > 0) crashes on escape codes
+sed() {
+  LC_ALL=C command sed "$@"
+}
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -206,7 +210,7 @@ start_cooja() {
   fi
 
   log "Launching Cooja with simulation_mac.csc → log: $LOG_COOJA"
-  (cd "$COOJA_DIR" && ./gradlew run --args="$SIM_FILE" 2>&1) > "$LOG_COOJA" 2>&1 &
+  (cd "$COOJA_DIR" && ./gradlew run --args="--autostart $SIM_FILE" 2>&1) > "$LOG_COOJA" 2>&1 &
   save_pid $! "$PID_COOJA"
   ok "Cooja launched (pid $!) — GUI may take 15-30s to appear"
   log "  Simulation file: $SIM_FILE"
@@ -227,6 +231,12 @@ start_tunslip() {
     return
   fi
 
+  # Wait for Cooja's serial socket to open
+  if ! wait_port $TUNSLIP_PORT "Cooja Serial Socket" 45; then
+    err "Cannot start tunslip6 because Cooja Serial Socket is not open."
+    return 1
+  fi
+
   log "Starting tunslip6 (requires sudo) → log: $LOG_TUNSLIP"
   warn "You may be prompted for your macOS password (sudo)"
   sudo "$TUNSLIP_DIR/tunslip6" -a 127.0.0.1 -p $TUNSLIP_PORT "$TUNSLIP_PREFIX" \
@@ -242,8 +252,14 @@ cmd_start() {
   banner "🚀 Digital Twin — Full Stack Start"
   echo -e "${BOLD}Flow: Contiki (Cooja) → Node-RED → Akka${RESET}\n"
 
-  # Check firmware exists
-  if [[ ! -f "$CONTIKI_NG/examples/iot-node/build/cooja/iot-node.cooja" ]]; then
+  local start_native_cooja=true
+  if [[ "${1:-}" == "--no-cooja" || "${1:-}" == "no-cooja" ]]; then
+    start_native_cooja=false
+    log "Skipping native Cooja startup (Cooja is expected to run in Docker)"
+  fi
+
+  # Check firmware exists (only if starting native cooja)
+  if $start_native_cooja && [[ ! -f "$CONTIKI_NG/examples/iot-node/build/cooja/iot-node.cooja" ]]; then
     warn "Firmware not compiled yet — running compile step first…"
     cmd_compile
   fi
@@ -252,8 +268,10 @@ cmd_start() {
   echo ""
   start_akka
   echo ""
-  start_cooja
-  echo ""
+  if $start_native_cooja; then
+    start_cooja
+    echo ""
+  fi
   start_tunslip
   echo ""
 
@@ -282,12 +300,38 @@ cmd_stop() {
       kill -KILL "$pid" 2>/dev/null || true
       ok "$name stopped"
     else
-      log "$name is not running"
+      log "$name is not running (according to pidfile)"
     fi
     rm -f "$pidfile"
   done
 
-  # Kill any stray tunslip6 (sudo process)
+  log "Cleaning up any remaining processes on ports $AKKA_PORT, $NODERED_PORT..."
+  
+  # Kill processes on Akka port (using sudo to handle root-owned instances)
+  local akka_pid
+  akka_pid=$(sudo lsof -t -i :"$AKKA_PORT" -sTCP:LISTEN 2>/dev/null || true)
+  if [[ -n "$akka_pid" ]]; then
+    log "Stopping process on Akka port $AKKA_PORT (pid $akka_pid)…"
+    sudo kill -TERM "$akka_pid" 2>/dev/null || true
+    sleep 0.5
+    sudo kill -KILL "$akka_pid" 2>/dev/null || true
+  fi
+
+  # Kill processes on Node-RED port (using sudo)
+  local nr_pid
+  nr_pid=$(sudo lsof -t -i :"$NODERED_PORT" -sTCP:LISTEN 2>/dev/null || true)
+  if [[ -n "$nr_pid" ]]; then
+    log "Stopping process on Node-RED port $NODERED_PORT (pid $nr_pid)…"
+    sudo kill -TERM "$nr_pid" 2>/dev/null || true
+    sleep 0.5
+    sudo kill -KILL "$nr_pid" 2>/dev/null || true
+  fi
+
+  # Kill any stray processes by name (using sudo)
+  log "Stopping any remaining processes by name..."
+  sudo pkill -f "com.digitaltwin.App" 2>/dev/null || true
+  sudo pkill -f "org.contikios.cooja" 2>/dev/null || true
+  sudo pkill -f "GradleWrapperMain" 2>/dev/null || true
   sudo pkill -f tunslip6 2>/dev/null || true
 
   ok "All services stopped"
@@ -656,7 +700,7 @@ shift || true
 
 case "$CMD" in
   compile)   cmd_compile ;;
-  start)     cmd_start ;;
+  start)     cmd_start "$@" ;;
   stop)      cmd_stop ;;
   status)    cmd_status ;;
   dashboard) cmd_dashboard "${1:-2}" ;;

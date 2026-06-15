@@ -15,7 +15,7 @@ const CFG = {
   moteRadius: 18,                       // canvas px
   pulseLifetime: 900,                   // ms — traffic pulse animation
   hazeLifetime: 600,                    // ms — period-update halo
-  labelFont: '500 11px JetBrains Mono, monospace',
+  labelFont: '600 12px JetBrains Mono, monospace',
 };
 
 /* ═══════════════════════════════════════════════════════════════
@@ -186,7 +186,7 @@ const COLOR = {
   moteNormal:   '#38bdf8',
   moteCrashed:  '#f87171',
   moteSelected: '#fbbf24',
-  label:        '#8b949e',
+  label:        '#ffffff',
   pulse:        '#7dd3fc',
 };
 
@@ -263,18 +263,34 @@ function drawMote(m) {
   ctx.strokeStyle = hexAlpha(color, isSelected ? 1 : 0.6);
   ctx.stroke();
 
-  // crash X indicator
+  // crash badge indicator (top-right of the mote to avoid obscuring the label)
   if (m.crashed) {
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    const s = r * 0.4;
-    ctx.beginPath(); ctx.moveTo(m.x - s, m.y - s); ctx.lineTo(m.x + s, m.y + s); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(m.x + s, m.y - s); ctx.lineTo(m.x - s, m.y + s); ctx.stroke();
+    const badgeX = m.x + r * 0.75;
+    const badgeY = m.y - r * 0.75;
+    const badgeR = 6.5;
+
+    // Draw badge background (red circle)
+    ctx.beginPath();
+    ctx.arc(badgeX, badgeY, badgeR, 0, Math.PI * 2);
+    ctx.fillStyle = '#ef4444';
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Draw white X inside the badge
+    const bs = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(badgeX - bs, badgeY - bs); ctx.lineTo(badgeX + bs, badgeY + bs);
+    ctx.moveTo(badgeX + bs, badgeY - bs); ctx.lineTo(badgeX - bs, badgeY + bs);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
 
-  // label
+  // label (dynamic color for perfect contrast on yellow/blue/red backgrounds)
   ctx.font = CFG.labelFont;
-  ctx.fillStyle = COLOR.label;
+  ctx.fillStyle = isSelected ? '#0d1117' : COLOR.label;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(`#${m.id}`, m.x, m.y);

@@ -1,0 +1,47 @@
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project logs and process IDs
+logs/
+.pids/
+*.log
+hs_err_pid*
+
+# Maven / Java build artifacts
+**/target/
+**/*.class
+**/*.jar
+**/*.war
+**/*.ear
+
+# IDE configurations
+.idea/
+*.iml
+*.iws
+.project
+.classpath
+.settings/
+.vscode/
+
+# Contiki-NG and Cooja build directories
+**/build/
+**/obj_cooja/
+symbols.c
+symbols.h
+
+# Compiled binaries and libraries
+**/*.cooja
+**/*.cooja.lnk
+**/*.o
+**/*.d
+**/*.a
+**/*.hex
+**/*.bin
+**/*.elf
+**/*.map

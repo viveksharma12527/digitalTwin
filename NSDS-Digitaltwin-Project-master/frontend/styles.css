@@ -43,7 +43,7 @@ html, body {
   position: fixed;
   top: 16px;
   left: 16px;
-  width: 220px;
+  width: 240px;
   background: rgba(22,27,34,0.92);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);

@@ -34,7 +34,9 @@ def periodic_traffic():
     """Simulates dummy traffic flow."""
     while True:
         if state["is_running"]:
-            send_to_nodered("TRAFFIC", {"seq": int(time.time()), "parent": state["parent"]})
+            # Format parent as mock IPv6 string so Node-RED can parse it
+            parent_str = f"0{state['parent']}00::0"
+            send_to_nodered("TRAFFIC", {"seq": int(time.time()), "parent": parent_str})
         time.sleep(state["T"])
 
 def listen_for_commands():
@@ -64,6 +66,7 @@ while True:
     val = input()
     if val == 'p':
         state["parent"] += 1
-        send_to_nodered("PARENT_CHANGE", {"newParentId": state["parent"]})
+        parent_str = f"0{state['parent']}00::0"
+        send_to_nodered("PARENT_CHANGE", {"newParentId": parent_str})
     elif val == 'q':
         break
