@@ -1,0 +1,263 @@
+[
+    {
+        "id": "cafed3095c539b31",
+        "type": "udp in",
+        "z": "f6f2187d.f17ca8",
+        "name": "",
+        "iface": "",
+        "port": "5000",
+        "ipv": "udp4",
+        "multicast": "false",
+        "group": "",
+        "datatype": "utf8",
+        "x": 220,
+        "y": 260,
+        "wires": [
+            [
+                "5ad65bb308e4790f"
+            ]
+        ]
+    },
+    {
+        "id": "5ad65bb308e4790f",
+        "type": "json",
+        "z": "f6f2187d.f17ca8",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 270,
+        "y": 460,
+        "wires": [
+            [
+                "5cefb7dd34e38a9f",
+                "bd7b93e6d9d157d7"
+            ]
+        ]
+    },
+    {
+        "id": "bd7b93e6d9d157d7",
+        "type": "trigger",
+        "z": "f6f2187d.f17ca8",
+        "name": "crash",
+        "op1": "",
+        "op2": "",
+        "op1type": "nul",
+        "op2type": "payl",
+        "duration": "10",
+        "extend": true,
+        "overrideDelay": false,
+        "units": "s",
+        "reset": "",
+        "bytopic": "topic",
+        "topic": "payload.moteId",
+        "outputs": 1,
+        "x": 470,
+        "y": 260,
+        "wires": [
+            [
+                "ea981f9680f73e16"
+            ]
+        ]
+    },
+    {
+        "id": "5cefb7dd34e38a9f",
+        "type": "switch",
+        "z": "f6f2187d.f17ca8",
+        "name": "",
+        "property": "payload.type",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "TRAFFIC",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "PARENT_CHANGE",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 550,
+        "y": 420,
+        "wires": [
+            [
+                "391cd6669afe12b3"
+            ],
+            [
+                "26b2d1a8b8470f11"
+            ]
+        ]
+    },
+    {
+        "id": "391cd6669afe12b3",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "normal",
+        "func": "msg.url = \"http://host.docker.internal:8080/traffic\"; \nmsg.payload = { \n    moteId: msg.payload.moteId \n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 650,
+        "y": 340,
+        "wires": [
+            [
+                "98f6adc93773c258"
+            ]
+        ]
+    },
+    {
+        "id": "26b2d1a8b8470f11",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "parent_change",
+        "func": "msg.url = \"http://host.docker.internal:8080/parent\";\nmsg.payload = { \n    moteId: msg.payload.moteId,\n    newParentId: msg.payload.newParentId // matches Python and Java\n}; \nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 640,
+        "y": 520,
+        "wires": [
+            [
+                "98f6adc93773c258"
+            ]
+        ]
+    },
+    {
+        "id": "ea981f9680f73e16",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "crash_handler",
+        "func": "msg.url = \"http://host.docker.internal:8080/crash\";\nmsg.payload = { \n    moteId: msg.payload.moteId \n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 600,
+        "y": 180,
+        "wires": [
+            [
+                "98f6adc93773c258"
+            ]
+        ]
+    },
+    {
+        "id": "98f6adc93773c258",
+        "type": "http request",
+        "z": "f6f2187d.f17ca8",
+        "name": "",
+        "method": "POST",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 890,
+        "y": 420,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "47f569215e5022d1",
+        "type": "http in",
+        "z": "f6f2187d.f17ca8",
+        "name": "UpdateT",
+        "url": "/set-params",
+        "method": "post",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 260,
+        "y": 600,
+        "wires": [
+            [
+                "1d075d1d019512f7"
+            ]
+        ]
+    },
+    {
+        "id": "1d075d1d019512f7",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "To Python Command",
+        "func": "// ModeActor -> Node-RED: UDP to Contiki + HTTP response to Akka\nconst body = msg.payload || {};\nconst moteId = body.moteId;\nconst newT = (typeof body.newT !== 'undefined') ? body.newT\n    : (typeof body.periodT !== 'undefined') ? body.periodT\n        : (typeof body.newTStr !== 'undefined') ? parseInt(body.newTStr, 10)\n            : undefined;\n\nif (typeof newT === 'undefined' || Number.isNaN(Number(newT))) {\n    node.warn(\"Missing or invalid newT/periodT in payload: \" + JSON.stringify(body));\n    const errMsg = RED.util.cloneMessage(msg);\n    errMsg.payload = { error: \"missing newT/periodT\" };\n    errMsg.statusCode = 400;\n    return [null, errMsg];\n}\n\n// Output 1: UDP — JSON string (Contiki does json.loads on the packet)\nconst udpMsg = RED.util.cloneMessage(msg);\nudpMsg.payload = JSON.stringify({\n    action: \"SET_PERIOD\",\n    value: Number(newT),\n    moteId: moteId\n});\n\n// Output 2: HTTP response — clone keeps req/res (fixes \"No response object\")\nconst resp = RED.util.cloneMessage(msg);\nresp.payload = { status: \"ok\" };\nresp.statusCode = 200;\n\nreturn [udpMsg, resp];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 520,
+        "y": 600,
+        "wires": [
+            [
+                "a28d7c81a760eb9a",
+                "3c28b0d756a63670"
+            ],
+            [
+                "1db71c7357b7485e"
+            ]
+        ]
+    },
+    {
+        "id": "a28d7c81a760eb9a",
+        "type": "udp out",
+        "z": "f6f2187d.f17ca8",
+        "name": "UDP Packet",
+        "addr": "host.docker.internal",
+        "iface": "",
+        "port": "6000",
+        "ipv": "udp4",
+        "outport": "",
+        "base64": false,
+        "multicast": "false",
+        "x": 810,
+        "y": 600,
+        "wires": []
+    },
+    {
+        "id": "3c28b0d756a63670",
+        "type": "debug",
+        "z": "f6f2187d.f17ca8",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 800,
+        "y": 560,
+        "wires": []
+    },
+    {
+        "id": "1db71c7357b7485e",
+        "type": "http response",
+        "z": "f6f2187d.f17ca8",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 810,
+        "y": 660,
+        "wires": []
+    }
+]

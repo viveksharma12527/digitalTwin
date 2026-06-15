@@ -1,0 +1,9 @@
+{
+  "name": "iot-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Minimal vanilla JS IoT dashboard (no bundler)",
+  "scripts": {
+    "serve": "python -m http.server 3000"
+  }
+}

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IoT Network Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- HUD: top-left status bar -->
+  <div id="hud">
+    <div id="hud-title">IoT Network</div>
+    <div id="hud-stats">
+      <span class="stat">
+        <span class="stat-label">Motes</span>
+        <span id="stat-motes" class="stat-value">0</span>
+      </span>
+      <span class="stat">
+        <span class="stat-label">Traffic</span>
+        <span id="stat-traffic" class="stat-value">0</span>
+      </span>
+      <span class="stat">
+        <span class="stat-label">Crashes</span>
+        <span id="stat-crashes" class="stat-value">0</span>
+      </span>
+    </div>
+
+    <div id="hud-controls">
+      <span id="sse-status" class="dot disconnected" title="SSE connection status"></span>
+      <span id="sse-label">Disconnected</span>
+      <label class="toggle-wrap" title="Enable built-in demo mode (no backend needed)">
+        <input type="checkbox" id="demo-toggle" />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span>Demo</span>
+      </label>
+    </div>
+
+    <div id="api-row">
+      <input id="api-input" type="text" value="http://localhost:8080" spellcheck="false" />
+      <button id="api-apply">Apply</button>
+    </div>
+  </div>
+
+  <!-- Full-screen canvas for the network graph -->
+  <canvas id="scene"></canvas>
+
+  <!-- Per-mote inspector panel -->
+  <div id="inspector" class="hidden" role="dialog" aria-modal="true" aria-label="Mote inspector">
+    <div id="inspector-card">
+      <button id="ins-close" aria-label="Close inspector">&#x2715;</button>
+      <div id="ins-header">
+        <div id="ins-icon"></div>
+        <div>
+          <div id="ins-title">Mote</div>
+          <div id="ins-id-badge"></div>
+        </div>
+      </div>
+      <div class="ins-grid">
+        <span class="ins-key">Parent</span><span id="ins-parent" class="ins-val">—</span>
+        <span class="ins-key">Period&nbsp;(T)</span><span id="ins-t" class="ins-val">—</span>
+        <span class="ins-key">Status</span><span id="ins-status" class="ins-val">—</span>
+      </div>
+      <form id="update-form" autocomplete="off">
+        <label for="new-t-input">Update period (T)</label>
+        <div class="form-row">
+          <input id="new-t-input" type="number" min="1" max="3600" placeholder="new T (s)" />
+          <button type="submit" id="send-btn">Send</button>
+        </div>
+        <div id="form-msg"></div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/main.js" type="module"></script>
+</body>
+</html>
