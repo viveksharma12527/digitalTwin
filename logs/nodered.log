@@ -1,0 +1,49 @@
+15 Jun 23:38:37 - [info] 
+
+Welcome to Node-RED
+===================
+
+15 Jun 23:38:37 - [info] Node-RED version: v4.1.1
+15 Jun 23:38:37 - [info] Node.js  version: v23.5.0
+15 Jun 23:38:37 - [info] Darwin 25.5.0 arm64 LE
+15 Jun 23:38:38 - [info] Loading palette nodes
+[37m15 Jun 23:38:39 - [info] RedBot version:[39m [92m1.2.4[39m[90m (node-red-contrib-chatbot)[39m
+[37m15 Jun 23:38:39 - [info] [39mRed Bot Mission Control is not enabled.
+[37m15 Jun 23:38:39 - [info] [39m  [90mEnable it running with the REDBOT_ENABLE_MISSION_CONTROL environment variable:[39m
+[37m15 Jun 23:38:39 - [info] [39m  [90m  REDBOT_ENABLE_MISSION_CONTROL=true node-red -u /my-user-dir[39m
+
+(node:10192) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+15 Jun 23:38:41 - [info] Settings file  : /Users/vivek/.node-red/settings.js
+15 Jun 23:38:41 - [info] Context store  : 'default' [module=memory]
+15 Jun 23:38:41 - [info] User directory : /Users/vivek/.node-red
+15 Jun 23:38:41 - [warn] Projects disabled : editorTheme.projects.enabled=false
+15 Jun 23:38:41 - [info] Flows file     : /Users/vivek/.node-red/flows.json
+15 Jun 23:38:41 - [info] Server now running at http://127.0.0.1:1880/
+15 Jun 23:38:41 - [warn] 
+
+---------------------------------------------------------------------
+Your flow credentials file is encrypted using a system-generated key.
+
+If the system-generated key is lost for any reason, your credentials
+file will not be recoverable, you will have to delete it and re-enter
+your credentials.
+
+You should set your own key using the 'credentialSecret' option in
+your settings file. Node-RED will then re-encrypt your credentials
+file using your chosen key the next time you deploy a change.
+---------------------------------------------------------------------
+
+15 Jun 23:38:41 - [info] Starting flows
+15 Jun 23:38:41 - [info] Started flows
+15 Jun 23:38:41 - [info] [udp in:cafed3095c539b31] udp listener at 0.0.0.0:5000
+15 Jun 23:38:41 - [info] [udp out:UDP Packet] udp ready: localhost:6000
+15 Jun 23:38:43 - [info] Stopping flows
+15 Jun 23:38:43 - [info] [udp in:cafed3095c539b31] udp listener stopped
+15 Jun 23:38:43 - [info] [udp out:UDP Packet] udp output stopped
+15 Jun 23:38:43 - [info] Stopped flows
+15 Jun 23:38:43 - [info] Updated flows
+15 Jun 23:38:43 - [info] Starting flows
+15 Jun 23:38:43 - [info] Started flows
+15 Jun 23:38:43 - [info] [udp in:cafed3095c539b31] udp listener at 0.0.0.0:5000
+15 Jun 23:38:43 - [info] [udp out:UDP Packet] udp ready: localhost:6000

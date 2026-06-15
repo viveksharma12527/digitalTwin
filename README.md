@@ -38,25 +38,25 @@ This project implements a **real-time Digital Twin** of an IoT low-power wireles
 ### Ports Reference
 | Protocol | Port | Source | Target | Role |
 | :--- | :--- | :--- | :--- | :--- |
-| **UDP/IPv6** | `5005` | Contiki Nodes | Node-RED | Telemetry channel (parent change, app messages, crash reports) |
-| **UDP/IPv6** | `5010` | Node-RED | Contiki Nodes | Command channel (message period T changes) |
+| **UDP/IPv6** | `5000` | Contiki Nodes | Node-RED | Telemetry channel (parent change, app messages, crash reports) |
+| **UDP/IPv6** | `6000` | Node-RED | Contiki Nodes | Command channel (message period T changes) |
 | **HTTP/JSON**| `8080` | Node-RED | Akka Twin | HTTP POST endpoints to update/crash virtual actors |
-| **HTTP/JSON**| `1880` | User/Akka | Node-RED | Set period endpoints `/setPeriod` |
+| **HTTP/JSON**| `1880` | User/Akka | Node-RED | Set period endpoints `/set-params` |
+| **TCP**      | `60001`| Cooja Mote 1 | tunslip6 | Cooja serial port socket |
 
 ### JSON Specifications
 * **Parent Changed Event (Contiki ➔ Node-RED ➔ Akka):**
   ```json
-  {"nodeId": 2, "event": "parent_change", "newParent": "fd00::201", "oldParent": "fd00::203"}
+  {"nodeId": 2, "event": "PARENT_CHANGE", "newParentId": "0201:0000:0000:0000"}
   ```
 * **App Message Telemetry (Contiki ➔ Node-RED ➔ Akka):**
   ```json
-  {"nodeId": 2, "event": "app_message", "seq": 2400500}
+  {"nodeId": 2, "event": "TRAFFIC", "seq": 2400500, "parent": "0201:0000:0000:0000"}
   ```
 * **Set Period Command (HTTP Client ➔ Node-RED ➔ Contiki):**
   ```json
-  {"nodeId": 2, "newPeriod": 3}
+  {"moteId": 2, "newT": 3}
   ```
-  *(Cooja command format sent by Node-RED: raw string `"newPeriod:3"` to node's port `5010`)*
 * **Crash Mote Event (Contiki ➔ Node-RED ➔ Akka):**
   ```json
   {"nodeId": 2, "event": "crash"}
@@ -64,194 +64,144 @@ This project implements a **real-time Digital Twin** of an IoT low-power wireles
 
 ---
 
-## � Prerequisites (macOS)
+## 💻 Prerequisites (macOS)
 
-Before you begin, install these dependencies:
+Before you begin, install these dependencies natively on your Mac (compilation for Cooja runs natively to match the host Java simulator):
 
-### 1. Homebrew
+### 1. Homebrew & System Utilities
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+brew install git maven node
 ```
 
-### 2. Git LFS
-```bash
-brew install git-lfs
-git lfs install
-```
-
-### 3. Docker Desktop
-- Download: https://www.docker.com/products/docker-desktop/
-- Open the app and wait for the whale icon to appear in the menu bar
-
-### 4. XQuartz (for Cooja GUI on Mac) ⚠️ IMPORTANT
+### 2. XQuartz (for Cooja GUI on Mac) ⚠️ IMPORTANT
 ```bash
 brew install --cask xquartz
 ```
 **After installation, RESTART your Mac.** Then:
-- Open XQuartz → Preferences → Security
-- ✅ CHECK "Allow connections from network clients"
+1. Open XQuartz.
+2. Go to **Preferences ➔ Security**.
+3. Check **"Allow connections from network clients"**.
 
-### 5. Java 17
+### 3. Java 21 (JDK)
+Ensure you are using Java 21, which is required by both Akka and the latest Gradle wrappers:
 ```bash
-brew install openjdk@17
-echo 'export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"' >> ~/.zshrc
+brew install openjdk@21
+# Add openjdk to path (zsh)
+echo 'export PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-### 6. Node-RED
+### 4. Node-RED Flow Editor
 ```bash
-brew install node
 npm install -g --unsafe-perm node-red
 ```
 
-### 7. Maven
-```bash
-brew install maven
-```
-
-### 8. Contiki-NG + Cooja
+### 5. Contiki-NG + Cooja Repo Setup
+Ensure Contiki-NG is cloned into your home directory (`~/contiki-ng`):
 ```bash
 cd ~
 git clone https://github.com/contiki-ng/contiki-ng.git
 cd contiki-ng
-git submodule update --init --recursive
-```
-
-**If gecko_sdk fails**, run this instead:
-```bash
 git submodule update --init tools/cooja
 ```
 
-#### Set Docker Alias (run once)
-```bash
-echo 'export CNG_PATH=~/contiki-ng' >> ~/.zshrc
-echo 'alias contiker="docker run --privileged --mount type=bind,source=$CNG_PATH,destination=/home/user/contiki-ng --sysctl net.ipv6.conf.all.disable_ipv6=0 -e DISPLAY=host.docker.internal:0 -ti contiker/contiki-ng"' >> ~/.zshrc
-source ~/.zshrc
-```
+---
 
-#### Pull Contiki-NG Docker Image
-```bash
-docker pull contiker/contiki-ng
-```
+## 🚀 The Quick-Start Runner (`run.sh`)
 
-**Note:** On M1/M2/M3 Macs, Docker will warn about `linux/amd64` vs `arm64` — this is normal and can be ignored.
+We have created an automated, all-in-one runner script called `run.sh` in the project root directory. It compiles the firmware natively and starts/stops all background services automatically.
+
+### Commands Reference
+* `./run.sh compile` — Build the Contiki firmware natively on macOS.
+* `./run.sh start` — Start all services (Node-RED, Akka, Cooja Simulator, tunslip6).
+* `./run.sh stop` — Stop and kill all background processes.
+* `./run.sh status` — Get a quick status view of running ports and logs.
+* `./run.sh dashboard` — Open a live, auto-refreshing terminal dashboard.
+* `./run.sh test` — Run the end-to-end verification test suite.
 
 ---
 
-## �🚀 Setup & Execution Guide
+### Step-by-Step Execution Workflow
 
-Follow these steps in exact chronological order:
+### Step 1: Clean & Build Firmware
+Run the compiler script to build the firmware natively on macOS. This will automatically clean any Linux ELF objects (from Docker) to prevent compiler/linker architecture conflicts:
+```bash
+./run.sh compile
+```
 
-### 1. Compile Contiki-NG Firmware
-Ensure your Docker Desktop is running and compiling is performed inside the official Contiki-NG build environment.
-1. Enter the Docker container:
-   ```bash
-   docker run --privileged --mount type=bind,source=~/contiki-ng,destination=/home/user/contiki-ng --sysctl net.ipv6.conf.all.disable_ipv6=0 -ti contiker/contiki-ng
-   ```
-2. Navigate to the project directory:
-   ```bash
-   cd /home/user/contiki-ng/examples/iot-node/project2-digital-twin/contiki/iot-node
-   ```
-3. Compile the Cooja firmware:
-   ```bash
-   make TARGET=cooja
-   ```
-4. Exit the Docker container:
-   ```bash
-   exit
-   ```
-   *(Note: The firmware dynamically reads the system `node_id` from `"sys/node-id.h"`, so a single firmware compilation yields `iot-node.cooja` which works automatically for all nodes!)*
+### Step 2: Start All Services
+Start the Node-RED runtime, compile and launch the Akka HTTP server, and boot the Cooja Simulator:
+```bash
+./run.sh start
+```
+*Note: This command starts the serial bridge `tunslip6` in the background. If sudo password prompt is required, it will output a terminal warning. You can also run the command with `sudo ./run.sh start` to ensure your password is cached for the tunnel.*
 
-### 2. Start Cooja Simulator (Native Mac)
-Do not start Cooja inside Docker. On macOS, run it natively to enable the Java Swing GUI.
+### Step 3: Monitor in Live Dashboard
+Open the live dashboard to view the health of all services, open network ports, and the latest 3 lines of logs for each component:
+```bash
+./run.sh dashboard
+```
 
-⚠️ **Before launching Cooja**, enable X11 connections:
+### Step 4: Run Verification Tests
+Verify that Node-RED is forwarding packets and Akka endpoints are receiving data:
+```bash
+./run.sh test
+```
+
+### Step 5: Clean Shutdown
+To shut down and kill all background processes safely:
+```bash
+./run.sh stop
+```
+
+---
+
+## 🛠️ Manual Execution Guide (Without `run.sh`)
+
+If you prefer to run the components manually in separate terminal windows:
+
+### 1. Compile Motes Natively
+```bash
+cd ~/contiki-ng/examples/iot-node
+make clean TARGET=cooja
+make -j8 TARGET=cooja
+```
+
+### 2. Start Cooja
 ```bash
 xhost +localhost
-```
-
-Then launch Cooja:
-```bash
 cd ~/contiki-ng/tools/cooja
-./gradlew run
+./gradlew run --args="/Users/vivek/Documents/GitHub/MUTI/digitalTwin/contiki/simulation_mac.csc"
 ```
+*(Once Cooja GUI loads, press the **Start** button to begin the simulation)*
 
-In the Cooja GUI:
-1. Select **File ➔ Open simulation...** and choose `/Users/vivek/Documents/GitHub/MUTI/digitalTwin/contiki/simulation_mac.csc` (this will automatically launch the **Serial Socket Server** plugin on port `60001`).
-2. Press the **Start/Pause** button in the top-left to run the simulation clock.
-
-#### 2a. Start the Serial Socket Tunnel (tunslip6)
-To let the Border Router receive its network prefix and form the wireless tree, open a **new** terminal tab or window on your Mac and run:
+### 3. Connect the Tunnel
+In a new terminal window:
 ```bash
 cd ~/contiki-ng/tools/serial-io
 sudo ./tunslip6 -a 127.0.0.1 -p 60001 fd00::1/64
 ```
-*(Enter your macOS user password when prompted. Once connected, Node 1 will stop waiting for prefix and the network DODAG tree will form instantly!)*
 
-**Troubleshooting:** If the Cooja window does not open, exit and retry:
+### 4. Start Node-RED
 ```bash
-exit
-xhost +localhost
-docker run --privileged \
-  --mount type=bind,source=$CNG_PATH,destination=/home/user/contiki-ng \
-  --sysctl net.ipv6.conf.all.disable_ipv6=0 \
-  -e DISPLAY=host.docker.internal:0 \
-  -ti contiker/contiki-ng bash
-cd ~/contiki-ng/tools/cooja && ./gradlew run
+node-red
 ```
+Open `http://localhost:1880` and import `/Users/vivek/Documents/GitHub/MUTI/digitalTwin/NSDS-Digitaltwin-Project-master/nodered.json`. Click **Deploy**.
 
-### 2b. Build Network in Cooja GUI
-Once Cooja is open, create the RPL network topology:
-
-1. In the Cooja GUI, select **File ➔ New Simulation**
-2. Give it a name (e.g., `digitalTwin-network`)
-3. Add motes:
-   - Go to **Motes ➔ Add motes ➔ Sky mote**
-   - Load the compiled firmware from `~/contiki-ng/examples/iot-node/project2-digital-twin/contiki/iot-node/iot-node.cooja`
-   - Add **1 Root/Border Router node** (this collects all traffic)
-   - Add **3+ Sensor nodes** (they will automatically form an RPL tree)
-4. Start the simulation: Press **Start**
-5. Nodes automatically form an RPL tree with the Root at the top
-
-**Sensor Node Capabilities:**
-- Send periodic UDP messages to the root every T seconds
-- Detect parent changes and notify Node-RED via UDP: `{"nodeId":"1","event":"parent_change","newParent":"fd00::203"}`
-- Listen for period change commands from Node-RED: `{"nodeId":"1","event":"set_period","newPeriod":2000}`
-- Support crash simulation (stop radio or trigger infinite loop)
-
-### 3. Start Akka Digital Twin
-1. Navigate to the Akka directory:
-   ```bash
-   cd project2-digital-twin/akka
-   ```
-2. Compile and run the Maven project:
-   ```bash
-   mvn clean compile exec:java
-   ```
-This boots the `ActorSystem`, instantiates the supervisor along with three ghost nodes (`node1`, `node2`, `node3`), and starts the HTTP server listening on `http://localhost:8080`.
-
-### 4. Configure & Start Node-RED
-1. Run Node-RED in your terminal:
-   ```bash
-   node-red
-   ```
-2. Open the Node-RED flow editor in your browser: `http://localhost:1880`.
-3. Import the flow:
-   - Click the hamburger menu (top-right) ➔ **Import**.
-   - Paste the contents of `project2-digital-twin/nodered/flows.json`.
-   - Click **Import** and press **Deploy** (top-right red button).
+### 5. Start Akka Twin
+```bash
+cd /Users/vivek/Documents/GitHub/MUTI/digitalTwin/NSDS-Digitaltwin-Project-master/akka/digitaltwin
+mvn clean compile exec:java -Dexec.mainClass=com.digitaltwin.App
+```
 
 ---
 
-## 🛠️ Diagnostics & Troubleshooting (Mac / Apple Silicon M-Series)
+## 🔍 Diagnostics & macOS-Specific Gotchas
 
-* **Cannot connect to Docker daemon:**
-  * Ensure Docker Desktop is completely open (wait for the green whale icon in the menu bar).
-* **GNU Make version 4.0+ required:**
-  * macOS default `make` is an old v3.81. Always compile inside the Docker container using `contiker` where GNU Make is updated to 4.0+.
-* **Slow Cooja Interface on M-series Chips:**
-  * Java graphics pipeline can feel slow on macOS under Rosetta. Give the GUI 15–30 seconds to settle upon launching.
-* **X11 / Display Server Errors:**
-  * Make sure you are running Cooja natively on Mac via `./gradlew run` and **not** inside the Linux Docker container, as Docker lacks native access to macOS display servers.
-* **Dynamic IP Fallback in Node-RED:**
-  * The Node-RED flow keeps track of node IPs dynamically. If a `/setPeriod` HTTP request is made *before* the corresponding node has sent any packets, Node-RED will fall back to `fd00::20X` (where `X` is the node ID), which matches standard Cooja IPv6 formatting.
+* **"unknown file type in build/cooja/obj/*.o" Linker Errors**:
+  * This happens when you mixed compiling in Docker (generating Linux ELF binaries) with building/running Cooja natively on macOS (which uses Mach-O). Fix this by running `./run.sh compile` which performs a clean host compile.
+* **Cooja Fails to start with `-quickstart` error**:
+  * Newer versions of Cooja (Contiki-NG v5+) use Picocli for CLI options and no longer support the old `-quickstart=` flag. Pass the path directly to the wrapper as a positional argument (e.g. `./gradlew run --args="path/to/simulation.csc"`).
+* **Akka System.in.read() Exit on Start**:
+  * The Java application uses `System.in.read()` to halt execution when ENTER is pressed. If run in the background with redirected stdin (`< /dev/null`), it exits immediately. In `run.sh`, we pipe `tail -f /dev/null` into it to keep stdin open and prevent premature exits.

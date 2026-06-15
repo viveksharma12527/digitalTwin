@@ -1,0 +1,10 @@
+> Task :compileJava UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+
+> Task :run
+[32mINFO  [main] [Cooja.java:1145] - Loading /Users/vivek/Documents/GitHub/MUTI/digitalTwin/contiki/simulation_mac.csc random seed: null[0;39m
+[32mINFO  [AWT-EventQueue-0] [SerialSocketServer.java:360] - Listening on port: 60001[0;39m
+onServerStarted
+WARNING: row index is bigger than sorter's row count. Most likely this is a wrong sorter usage.
+[32mINFO  [sim] [Simulation.java:450] - Runtime: 5368 ms. Simulated time: 55095348 ms. Speedup: 10263.66393442623[0;39m
