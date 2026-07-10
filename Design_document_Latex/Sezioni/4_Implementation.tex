@@ -1,0 +1,41 @@
+\section{Implementation and Verification}
+
+\subsection*{Technology Stack}
+\begin{itemize}
+\item \textbf{Physical layer:} Contiki-NG, RPL-Lite routing, simulated in Cooja
+  (\texttt{UDGM} radio medium) with a native macOS build target for fast iteration.
+\item \textbf{Digital twin layer:} Akka Classic actors (Java~21), Akka HTTP for the REST
+  surface, and an SSE broadcast built on \texttt{Source.queue} + \texttt{BroadcastHub} so
+  every connected dashboard receives the same live event stream.
+\item \textbf{Coordination layer:} Node-RED, using only core nodes (\texttt{udp in/out},
+  \texttt{http in/request}, \texttt{switch}, \texttt{trigger}, \texttt{function}) so the flow
+  remains portable and inspectable without custom modules.
+\item \textbf{Dashboard:} dependency-free JavaScript and Canvas 2D, with a force-directed
+  layout for the topology view and a built-in demo mode that requires no backend.
+\end{itemize}
+
+\subsection*{Verification}
+The full pipeline was verified end to end, not just at the unit level, by exercising each
+synchronization guarantee against a live Node-RED instance, a running Akka process, and
+UDP peers standing in for physical motes:
+\begin{itemize}
+\item \textbf{Parent/traffic mirroring:} injected \texttt{PARENT\_CHANGE} and \texttt{TRAFFIC}
+  packets were observed to reach the correct Akka endpoint and to be broadcast, correctly
+  shaped, over the SSE stream consumed by the dashboard.
+\item \textbf{Per-mote period sync:} a \texttt{/updateT} request for one mote was confirmed to
+  produce a \texttt{SET\_PERIOD} UDP command addressed \emph{only} to that mote's tracked IP,
+  with a safe fallback when no address has been observed yet.
+\item \textbf{Crash/revive symmetry:} a simulated crash was confirmed to (i) restart the
+  correct twin with clean state, without disturbing sibling twins, and (ii) deliver a
+  \texttt{REVIVE} command to the physical/simulated mote, closing the recovery loop required
+  by the assignment.
+\item \textbf{Dual-stack addressing:} both IPv4-loopback and native IPv6 traffic were
+  confirmed to be received and routed correctly by the coordination layer, matching the real
+  \texttt{tunslip6}-bridged deployment.
+\end{itemize}
+
+\subsection*{Conclusion}
+The system satisfies all four synchronization requirements while keeping each layer free of
+concepts that do not belong to it: Contiki-NG exposes only physical-node behavior, Akka
+exposes only digital-twin state and supervision, and Node-RED is the single, swappable place
+where the two are reconciled.

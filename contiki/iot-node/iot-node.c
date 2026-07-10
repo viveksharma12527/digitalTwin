@@ -14,6 +14,7 @@
  * Commands received from Node-RED (same JSON as Python listener):
  *   {"action":"SET_PERIOD","value":<seconds>}   -> update send period
  *   {"action":"CRASH"}                          -> stop sending (node crash)
+ *   {"action":"REVIVE"}                         -> resume sending (recovery, symmetric to CRASH)
  */
 
 #include "contiki.h"
@@ -129,6 +130,13 @@ static void cmd_rx_callback(struct simple_udp_connection *c,
   if(strstr(buf, "\"CRASH\"") != NULL) {
     is_running = 0;
     LOG_INFO("[CMD] Node CRASHED!\n");
+    return;
+  }
+
+  /* --- REVIVE  (symmetric recovery: resume periodic traffic) --- */
+  if(strstr(buf, "\"REVIVE\"") != NULL) {
+    is_running = 1;
+    LOG_INFO("[CMD] Node REVIVED!\n");
     return;
   }
 }

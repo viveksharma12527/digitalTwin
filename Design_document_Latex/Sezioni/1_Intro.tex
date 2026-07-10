@@ -1,0 +1,43 @@
+\section{Introduction}
+
+This document describes the design and implementation of a \textbf{digital twin} for a
+low-power wireless sensor network built on \textbf{Contiki-NG}, \textbf{IPv6/RPL}, and
+\textbf{Akka} actors, coordinated through \textbf{Node-RED}. A set of Contiki-NG motes,
+simulated in Cooja, self-organize into an RPL destination-oriented DAG (DODAG) rooted at a
+border router and periodically send dummy application traffic toward that root. Separate
+from this physical network, one Akka actor per IoT node replicates its state --- current
+parent, the last $K$ parents, and the message period $T$ --- and is kept synchronized with
+its physical counterpart in near real time.
+
+The guiding design principle is a \textbf{strict separation of concerns} across three
+layers: the physical network (Contiki-NG) knows nothing about actors or twins; the actor
+system (Akka) knows nothing about UDP sockets, IPv6 addressing, or Cooja; all
+cross-layer \emph{coordination} --- protocol translation, per-node address tracking, and
+command routing --- lives exclusively in a single, swappable \textbf{Node-RED} flow. This
+means the digital twin's synchronization policy can be changed by importing a different
+Node-RED flow, without touching a single line of C or Java.
+
+\subsection*{Requirement Mapping}
+Table~\ref{tab:reqs} summarizes how each of the four synchronization guarantees required by
+the assignment is realized, and which component is responsible for it.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabularx}{\linewidth}{@{}p{0.09\linewidth} X X@{}}
+\toprule
+\textbf{Req.} & \textbf{Guarantee} & \textbf{Mechanism} \\
+\midrule
+(a) & Parent change $\rightarrow$ mirrored in twin &
+  Contiki \texttt{PARENT\_CHANGE} (UDP) $\rightarrow$ Node-RED $\rightarrow$ \texttt{POST /parent} $\rightarrow$ actor state update \\
+(b) & Application traffic $\rightarrow$ mimicked in twin &
+  Contiki \texttt{TRAFFIC} (UDP) $\rightarrow$ Node-RED $\rightarrow$ \texttt{POST /traffic} $\rightarrow$ actor event \\
+(c) & Period $T$ change $\rightarrow$ mirrored to node &
+  Dashboard/actor \texttt{POST /updateT} $\rightarrow$ Node-RED \texttt{/set-params} $\rightarrow$ UDP \texttt{SET\_PERIOD} to the specific mote \\
+(d) & Crash $\rightarrow$ mirrored, recovery symmetric &
+  \texttt{CRASH} $\rightarrow$ actor throws $\rightarrow$ supervisor restarts twin $\rightarrow$ Node-RED \texttt{/revive-node} $\rightarrow$ UDP \texttt{REVIVE} to the same mote \\
+\bottomrule
+\end{tabularx}
+\caption{Synchronization requirements and their implementation.}
+\label{tab:reqs}
+\end{table}

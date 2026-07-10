@@ -25,7 +25,8 @@ CONTIKI_NG="$HOME/contiki-ng"
 IOT_NODE_SRC="$SCRIPT_DIR/contiki/iot-node"
 AKKA_DIR="$SCRIPT_DIR/NSDS-Digitaltwin-Project-master/akka/digitaltwin"
 NODERED_FLOW="$SCRIPT_DIR/NSDS-Digitaltwin-Project-master/nodered.json"
-SIM_FILE="$SCRIPT_DIR/contiki/simulation_mac.csc"
+SIM_FILE_TEMPLATE="$SCRIPT_DIR/contiki/simulation.csc"
+SIM_FILE="$SCRIPT_DIR/contiki/.generated.simulation.csc"
 COOJA_DIR="$CONTIKI_NG/tools/cooja"
 TUNSLIP_DIR="$CONTIKI_NG/tools/serial-io"
 
@@ -130,6 +131,13 @@ start_nodered() {
     return
   fi
 
+  if port_open "$NODERED_PORT"; then
+    err "Port $NODERED_PORT is already in use by a process this script isn't tracking"
+    err "  Find it:  lsof -i :$NODERED_PORT -sTCP:LISTEN"
+    err "  Stop it, or run './run.sh stop' first, then retry './run.sh start'"
+    return 1
+  fi
+
   if ! command -v node-red &>/dev/null; then
     err "node-red not found. Install with: npm install -g --unsafe-perm node-red"
     exit 1
@@ -163,6 +171,13 @@ start_akka() {
   if is_alive "$PID_AKKA"; then
     warn "Akka is already running (pid $(read_pid $PID_AKKA))"
     return
+  fi
+
+  if port_open "$AKKA_PORT"; then
+    err "Port $AKKA_PORT is already in use by a process this script isn't tracking"
+    err "  Find it:  lsof -i :$AKKA_PORT -sTCP:LISTEN"
+    err "  Stop it, or run './run.sh stop' first, then retry './run.sh start'"
+    return 1
   fi
 
   if ! command -v mvn &>/dev/null; then
@@ -209,7 +224,12 @@ start_cooja() {
     exit 1
   fi
 
-  log "Launching Cooja with simulation_mac.csc → log: $LOG_COOJA"
+  # simulation.csc uses a [CONTIKI_DIR] placeholder so the flow works on any
+  # machine/account, not just one with a hardcoded contiki-ng path.
+  log "Generating simulation .csc for CONTIKI_DIR=$CONTIKI_NG"
+  sed "s#\[CONTIKI_DIR\]#$CONTIKI_NG#g" "$SIM_FILE_TEMPLATE" > "$SIM_FILE"
+
+  log "Launching Cooja with $(basename "$SIM_FILE") → log: $LOG_COOJA"
   (cd "$COOJA_DIR" && ./gradlew run --args="--autostart $SIM_FILE" 2>&1) > "$LOG_COOJA" 2>&1 &
   save_pid $! "$PID_COOJA"
   ok "Cooja launched (pid $!) — GUI may take 15-30s to appear"
@@ -237,11 +257,30 @@ start_tunslip() {
     return 1
   fi
 
+  # tunslip6 needs root to create a tun interface. sudo must prompt (or use a
+  # cached ticket) *here*, in the foreground, while a real TTY is still attached —
+  # if we background it directly, a failed/expired prompt fails silently and
+  # tunslip6 just never starts, with no RPL bridge and no clear error.
+  if ! sudo -n true 2>/dev/null; then
+    log "tunslip6 requires sudo — you may be prompted for your macOS password"
+    if ! sudo -v; then
+      err "sudo failed (no password entered, or no interactive terminal attached)"
+      err "  Run 'sudo -v' successfully in this same terminal first, then retry './run.sh start'"
+      err "  Skipping tunslip6 — RPL DODAG will not form without it"
+      return 1
+    fi
+  fi
+
   log "Starting tunslip6 (requires sudo) → log: $LOG_TUNSLIP"
-  warn "You may be prompted for your macOS password (sudo)"
   sudo "$TUNSLIP_DIR/tunslip6" -a 127.0.0.1 -p $TUNSLIP_PORT "$TUNSLIP_PREFIX" \
     > "$LOG_TUNSLIP" 2>&1 &
   save_pid $! "$PID_TUNSLIP"
+  sleep 1
+  if ! kill -0 "$!" 2>/dev/null; then
+    err "tunslip6 exited immediately — check $LOG_TUNSLIP"
+    tail -5 "$LOG_TUNSLIP" 2>/dev/null | sed 's/^/    /'
+    return 1
+  fi
   ok "tunslip6 started (pid $!)"
 }
 
@@ -431,7 +470,7 @@ cmd_test() {
   }
 
   # ── 1. Node-RED reachable ─────────────────────────────────────────────────
-  log "[1/6] Node-RED HTTP reachable (port $NODERED_PORT)…"
+  log "[1/7] Node-RED HTTP reachable (port $NODERED_PORT)…"
   if curl -sf "http://localhost:$NODERED_PORT" -o /dev/null; then
     check "Node-RED is reachable" "ok"
   else
@@ -439,7 +478,7 @@ cmd_test() {
   fi
 
   # ── 2. Node-RED flow deployed (udp-in node on port 5000) ─────────────────
-  log "[2/6] Checking Node-RED flow has UDP-in node on port 5000…"
+  log "[2/7] Checking Node-RED flow has UDP-in node on port 5000…"
   local flow_json
   flow_json=$(curl -sf "http://localhost:$NODERED_PORT/flows" 2>/dev/null || echo "")
   if echo "$flow_json" | grep -q '"5000"'; then
@@ -449,7 +488,7 @@ cmd_test() {
   fi
 
   # ── 3. Akka HTTP reachable ────────────────────────────────────────────────
-  log "[3/6] Akka HTTP reachable (port $AKKA_PORT)…"
+  log "[3/7] Akka HTTP reachable (port $AKKA_PORT)…"
   local akka_code
   akka_code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$AKKA_PORT/" 2>/dev/null || echo "000")
   if [[ "$akka_code" != "000" ]]; then
@@ -459,14 +498,14 @@ cmd_test() {
   fi
 
   # ── 4. UDP listener test — can port 5000 accept packets? ─────────────────
-  log "[4/6] Sending a test TRAFFIC UDP packet to port 5000…"
+  log "[4/7] Sending a test TRAFFIC UDP packet to port 5000…"
   local test_payload='{"moteId":99,"type":"TRAFFIC","seq":1,"parent":"test"}'
   echo "$test_payload" | nc -u -w1 127.0.0.1 5000 2>/dev/null && \
     check "UDP TRAFFIC packet sent to Node-RED port 5000" "ok" || \
     check "UDP TRAFFIC packet sent to Node-RED port 5000" "nc failed (netcat not installed?)"
 
   # ── 5. SET_PERIOD command via Node-RED /set-params ────────────────────────
-  log "[5/6] Testing SET_PERIOD via POST /set-params…"
+  log "[5/7] Testing SET_PERIOD via POST /set-params…"
   local sp_code
   sp_code=$(curl -s -o "$LOG_DIR/test_setperiod.out" -w "%{http_code}" \
     -X POST "http://localhost:$NODERED_PORT/set-params" \
@@ -479,7 +518,7 @@ cmd_test() {
   fi
 
   # ── 6. Akka /traffic endpoint ─────────────────────────────────────────────
-  log "[6/6] Testing Akka /traffic endpoint directly…"
+  log "[6/7] Testing Akka /traffic endpoint directly…"
   local tr_code
   tr_code=$(curl -s -o "$LOG_DIR/test_traffic.out" -w "%{http_code}" \
     -X POST "http://localhost:$AKKA_PORT/traffic" \
@@ -489,6 +528,42 @@ cmd_test() {
     check "Akka /traffic accepted (HTTP $tr_code)" "ok"
   else
     check "Akka /traffic accepted" "HTTP $tr_code — check $LOG_DIR/test_traffic.out"
+  fi
+
+  # ── 7. Full pipeline — a UDP mote packet must produce a live SSE event ────
+  # Steps 4 and 6 only prove each hop works in isolation (nc can send to
+  # Node-RED; curl can hit Akka directly) — neither proves a real mote packet
+  # actually survives Node-RED's parse/route/http-request chain and comes out
+  # the other end as a dashboard event. This is what the frontend actually
+  # relies on (main.js opens an EventSource on Akka's /events), so it's the
+  # only check that reflects "can I see simulation data in the UI".
+  log "[7/7] Verifying UDP packet → Node-RED → Akka → SSE dashboard event (full pipeline)…"
+  local sse_log="$LOG_DIR/test_sse.out"
+  : > "$sse_log"
+  curl -sN "http://localhost:$AKKA_PORT/events" >> "$sse_log" 2>/dev/null &
+  local sse_pid=$!
+  sleep 1  # let the SSE connection establish before firing the packet
+
+  local e2e_mote_id=54321
+  local e2e_payload="{\"moteId\":$e2e_mote_id,\"type\":\"TRAFFIC\",\"seq\":1,\"parent\":\"test\"}"
+  echo "$e2e_payload" | nc -u -w1 127.0.0.1 5000 2>/dev/null || true
+
+  local found="" i=0
+  while [[ $i -lt 8 ]]; do
+    if grep -q "\"moteId\":$e2e_mote_id" "$sse_log" 2>/dev/null; then
+      found="yes"; break
+    fi
+    sleep 1; ((++i))
+  done
+
+  kill "$sse_pid" 2>/dev/null || true
+  wait "$sse_pid" 2>/dev/null || true
+
+  if [[ -n "$found" ]]; then
+    check "Full pipeline delivers a live SSE event to the dashboard" "ok"
+  else
+    check "Full pipeline delivers a live SSE event to the dashboard" \
+      "no SSE event for moteId $e2e_mote_id within 8s — check $sse_log, the Node-RED debug tab, and $LOG_AKKA"
   fi
 
   # ── Summary ───────────────────────────────────────────────────────────────
@@ -504,6 +579,10 @@ cmd_test() {
     echo "  • Firmware not compiled? → ./run.sh compile"
     echo "  • Cooja not running?     → open Cooja GUI and press ▶ Start"
     echo "  • Node-RED flow missing? → import nodered.json at http://localhost:$NODERED_PORT"
+    echo "  • Step 7 failing alone?  → data isn't reaching the SSE stream: check the"
+    echo "    Node-RED debug tab for the 'IP Tracker'/'normal'/http-request nodes,"
+    echo "    and confirm the udp-in node's IP version matches how packets arrive"
+    echo "    (it's set to udp6 — an IPv4-only sender may never be received)."
   fi
 }
 
@@ -674,7 +753,7 @@ Commands:
   ${GREEN}stop${RESET}           Stop all background services
   ${GREEN}status${RESET}         Show live status + recent log lines for each service
   ${GREEN}dashboard${RESET}      Live auto-refreshing status view (updates every 2s)
-  ${GREEN}test${RESET}           Run 6-step end-to-end verification suite
+  ${GREEN}test${RESET}           Run 7-step end-to-end verification suite
   ${GREEN}logs${RESET}           Tail ALL service logs simultaneously
   ${GREEN}logs <svc>${RESET}     Tail one service log: akka | nodered | cooja | tunslip | compile
 

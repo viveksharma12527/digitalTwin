@@ -1,0 +1,94 @@
+\section{Architecture}
+
+\subsection*{Three-Layer Overview}
+\begin{itemize}
+\item \textbf{Physical Network Layer (Cooja / Contiki-NG):} four simulated Sky motes.
+  Mote~1 runs the standard \texttt{rpl-border-router} firmware and acts as the DODAG root
+  and internet gateway; it holds no digital-twin logic. Motes~2--4 run a custom
+  \texttt{iot-node.c} firmware: each resolves its integer id dynamically from
+  \texttt{sys/node-id.h}, periodically sends dummy traffic toward the root, detects its own
+  RPL preferred-parent changes, and reacts to two generic UDP commands, \texttt{SET\_PERIOD}
+  and \texttt{REVIVE} (symmetric to a simulated \texttt{CRASH}).
+\item \textbf{Coordination Layer (Node-RED):} the only component aware of \emph{both}
+  worlds. It parses raw UDP telemetry, tracks each mote's current source address, translates
+  events into HTTP calls toward Akka, and translates twin-originated intents back into UDP
+  commands addressed to the correct physical mote.
+\item \textbf{Digital Twin Layer (Akka + Dashboard):} one Akka actor per IoT node holds pure
+  state and reacts only to messages; a lightweight Akka HTTP server exposes REST endpoints
+  and broadcasts every state change over Server-Sent Events (SSE) to a browser-based
+  dashboard (vanilla JS + Canvas) that renders the live topology.
+\end{itemize}
+
+\begin{figure}[h]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners, minimum width=2.3cm, minimum height=0.9cm, align=center, font=\small},
+  mote/.style={draw, circle, minimum size=0.85cm, font=\scriptsize, align=center},
+  actor/.style={draw, rounded corners, minimum width=1.55cm, minimum height=0.7cm, font=\scriptsize, align=center},
+  lbl/.style={font=\scriptsize, align=center, text width=3.4cm},
+  panel/.style={draw, dashed, rounded corners, inner sep=10pt},
+  >=Stealth
+]
+
+% --- Physical network: RPL mesh ---
+\node[mote] (br) at (0, 2.1) {BR\\mote 1};
+\node[mote] (m2) at (-1.35, 0) {mote 2};
+\node[mote] (m3) at (0, 0)     {mote 3};
+\node[mote] (m4) at (1.35, 0)  {mote 4};
+\draw (br) -- (m2);
+\draw (br) -- (m3);
+\draw (br) -- (m4);
+\node[panel, fit=(br)(m2)(m3)(m4), label={[font=\small\bfseries]above:Cooja / Contiki-NG}] (physpanel) {};
+
+% --- Coordination ---
+\node[box, right=3.3cm of physpanel] (nodered) {Node-RED\\coordination};
+
+% --- Digital twin: supervisor + one twin per mote ---
+\node[actor, right=3.4cm of nodered, yshift=1.0cm] (mgr) {MoteManager\\(supervisor)};
+\node[actor, below=0.7cm of mgr, xshift=-1.6cm] (t2) {twin-2};
+\node[actor, below=0.7cm of mgr]                (t3) {twin-3};
+\node[actor, below=0.7cm of mgr, xshift=1.6cm]  (t4) {twin-4};
+\draw[->, dashed] (mgr) -- (t2);
+\draw[->, dashed] (mgr) -- (t3);
+\draw[->, dashed] (mgr) -- (t4);
+\node[panel, fit=(mgr)(t2)(t3)(t4), label={[font=\small\bfseries]above:Akka Actor System}] (akkapanel) {};
+
+% --- Dashboard ---
+\node[box, below=1.6cm of akkapanel] (dash) {Web Dashboard};
+
+% --- Cross-layer flows: horizontal lanes, offset above/below each box's own center ---
+\draw[->] ($(physpanel.east)+(0,0.45)$) -- ($(nodered.west)+(0,0.45)$)
+  node[lbl, midway, above] {UDP:5000\\\texttt{TRAFFIC}/\texttt{PARENT\_CHANGE}};
+\draw[->] ($(nodered.west)+(0,-0.45)$) -- ($(physpanel.east)+(0,-0.45)$)
+  node[lbl, midway, below] {UDP:6000\\\texttt{SET\_PERIOD}/\texttt{REVIVE}};
+
+\draw[->] ($(nodered.east)+(0,0.45)$) -- ($(akkapanel.west)+(0,0.45)$)
+  node[lbl, midway, above] {HTTP\\\texttt{/parent /traffic /crash}};
+\draw[->] ($(akkapanel.west)+(0,-0.45)$) -- ($(nodered.east)+(0,-0.45)$)
+  node[lbl, midway, below] {HTTP\\\texttt{/set-params /revive-node}};
+
+\draw[->] (akkapanel.south) -- (dash.north) node[lbl, midway, right] {SSE\\\texttt{:8080/events}};
+\end{tikzpicture}
+}
+\caption{Architecture and message flow: the RPL mesh (left) exchanges UDP telemetry/commands
+  with Node-RED, the sole coordination point, which in turn drives the Akka actor system
+  (center-right) via HTTP; \texttt{MoteManager} supervises one twin per mote and restarts it
+  on crash; every state change is broadcast live to the dashboard over SSE.}
+\label{fig:arch}
+\end{figure}
+
+\subsection*{Digital Twin State}
+Twins are created lazily: a top-level \texttt{MoteManager} actor routes every incoming
+message by \texttt{moteId} and, on first contact, spawns a child \texttt{ModeActor} for that
+id via \texttt{getContext().actorOf(...)}. Each \texttt{ModeActor} holds exactly the state
+required by the assignment and nothing else:
+\begin{itemize}
+\item \texttt{currentParent} --- the node's current RPL parent identifier;
+\item \texttt{parentHistory} --- a FIFO of the last $K{=}3$ \emph{previous} parents (the
+  current one is pushed onto it only when it is actually superseded, never duplicated);
+\item \texttt{periodT} --- the current application message period.
+\end{itemize}
+No actor performs network I/O directly: all outbound side effects (physical period sync,
+physical revive) are issued by the orchestration layer (\texttt{DigitalTwinServer} /
+\texttt{MoteManager}), keeping each twin a pure, easily-testable state machine.

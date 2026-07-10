@@ -1,0 +1,40 @@
+\documentclass[10pt]{article}
+\usepackage[a4paper,margin=2.2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage{titlesec}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue, citecolor=black}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, fit, backgrounds, calc}
+
+% Compact lists so the ~4-page budget goes to content, not whitespace
+\setlist{nosep, itemsep=1pt, topsep=2pt, parsep=0pt}
+
+% Section-level headings (no \chapter): report class forces a page break on
+% every \chapter, which a 4-page document cannot afford.
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection}{1em}{}
+\titlespacing*{\section}{0pt}{10pt}{4pt}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{}
+\titlespacing*{\subsection}{0pt}{6pt}{2pt}
+
+\setlength{\parskip}{2pt}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+\pagenumbering{roman}
+\input{front}
+
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+\input{Sezioni/1_Intro}
+\input{Sezioni/2_Architecture}
+\input{Sezioni/3_Coordination}
+\input{Sezioni/4_Implementation}
+
+\end{document}

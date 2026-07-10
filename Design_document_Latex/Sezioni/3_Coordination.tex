@@ -1,0 +1,46 @@
+\section{Coordination Layer and Crash Recovery}
+
+\subsection*{Node-RED as the Only Cross-Layer Component}
+Per the assignment's constraint, no IoT-node-specific protocol knowledge exists in Contiki
+or in Akka: Contiki only understands generic commands (\texttt{SET\_PERIOD}, \texttt{CRASH},
+\texttt{REVIVE}); Akka only understands actor messages and issues generic HTTP intents
+(``sync period for mote $X$'', ``revive mote $X$'') toward Node-RED. All translation lives in
+one importable/swappable flow (\texttt{nodered.json}):
+\begin{itemize}
+\item An \textbf{IP Tracker} function records, for every inbound UDP packet, the sender's
+  source address keyed by \texttt{moteId} in flow context (\texttt{node\_ip\_\textless id\textgreater}).
+  This is what makes commands \emph{addressable}: a \texttt{SET\_PERIOD} or \texttt{REVIVE}
+  request is routed to the specific mote's last-known address rather than a single fixed
+  target, so concurrent multi-mote operation is correct.
+\item A \textbf{switch} node dispatches \texttt{TRAFFIC} and \texttt{PARENT\_CHANGE} events
+  to distinct HTTP calls (\texttt{/traffic}, \texttt{/parent}); a \textbf{trigger} node acts
+  as a dead-man's switch, firing \texttt{/crash} when a mote has been silent for longer than
+  its expected period, mirroring a physical crash (e.g. a mote stopped in Cooja) even when it
+  cannot itself announce its own death.
+\item UDP sockets are opened in \textbf{dual-stack} (\texttt{udp6}) mode, since motes reach
+  Node-RED over a real IPv6 path (\texttt{tunslip6} bridging Cooja's RPL mesh, rooted at
+  \texttt{fd00::1}, to the host); an IPv4-only socket would silently drop all genuine mesh
+  traffic while still appearing to work under local loopback testing.
+\end{itemize}
+
+\subsection*{Symmetric Crash Recovery}
+Requirement (d) demands more than mirroring a crash: recovery must be \emph{symmetric}, i.e.
+also applied back to the physical node. This is implemented as a closed loop across all three
+layers:
+\begin{sloppypar}
+\begin{enumerate}
+\item A crash (self-triggered \texttt{CRASH} command, or externally detected silence) reaches
+  \texttt{ModeActor} as a \texttt{MoteCrashed} message; the actor logs the event and
+  \textbf{throws} a dedicated \texttt{MoteCrashSimulationException}.
+\item \texttt{MoteManager} applies a \textbf{one-for-one} supervisor strategy: only
+  the crashed mote's own twin is restarted, siblings are unaffected. Restarting recreates the
+  actor from \texttt{ModeActor.props()}, resetting \texttt{currentParent},
+  \texttt{parentHistory} and \texttt{periodT} to a clean state.
+\item In the same decision, the supervisor triggers \texttt{PhysicalNodeSync}'s revive call,
+  an asynchronous HTTP request to Node-RED's \texttt{/revive-node} endpoint, which resolves the
+  mote's tracked IP and sends it a \texttt{REVIVE} UDP command, resuming its periodic traffic.
+\end{enumerate}
+\end{sloppypar}
+The revive trigger is intentionally placed in the supervisor rather than inside
+\texttt{ModeActor} itself, so that twin actors remain free of network side effects and the
+recovery policy stays entirely inspectable/replaceable at the orchestration layer.

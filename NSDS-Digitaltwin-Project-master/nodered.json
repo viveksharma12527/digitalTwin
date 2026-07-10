@@ -6,7 +6,7 @@
         "name": "",
         "iface": "",
         "port": "5000",
-        "ipv": "udp4",
+        "ipv": "udp6",
         "multicast": "false",
         "group": "",
         "datatype": "utf8",
@@ -28,6 +28,26 @@
         "pretty": false,
         "x": 270,
         "y": 460,
+        "wires": [
+            [
+                "a1b2c3d4e5f60718"
+            ]
+        ]
+    },
+    {
+        "id": "a1b2c3d4e5f60718",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "IP Tracker",
+        "func": "// Remember which source IP each moteId last sent from, so commands\n// (e.g. SET_PERIOD) can be routed back to the correct physical/simulated node\n// instead of a single hardcoded address.\nif (msg.ip && msg.payload && typeof msg.payload.moteId !== 'undefined') {\n    flow.set('node_ip_' + msg.payload.moteId, msg.ip);\n}\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 300,
+        "y": 400,
         "wires": [
             [
                 "5cefb7dd34e38a9f",
@@ -198,7 +218,7 @@
         "type": "function",
         "z": "f6f2187d.f17ca8",
         "name": "To Python Command",
-        "func": "// ModeActor -> Node-RED: UDP to Contiki + HTTP response to Akka\nconst body = msg.payload || {};\nconst moteId = body.moteId;\nconst newT = (typeof body.newT !== 'undefined') ? body.newT\n    : (typeof body.periodT !== 'undefined') ? body.periodT\n        : (typeof body.newTStr !== 'undefined') ? parseInt(body.newTStr, 10)\n            : undefined;\n\nif (typeof newT === 'undefined' || Number.isNaN(Number(newT))) {\n    node.warn(\"Missing or invalid newT/periodT in payload: \" + JSON.stringify(body));\n    const errMsg = RED.util.cloneMessage(msg);\n    errMsg.payload = { error: \"missing newT/periodT\" };\n    errMsg.statusCode = 400;\n    return [null, errMsg];\n}\n\n// Output 1: UDP \u2014 JSON string (Contiki does json.loads on the packet)\nconst udpMsg = RED.util.cloneMessage(msg);\nudpMsg.payload = JSON.stringify({\n    action: \"SET_PERIOD\",\n    value: Number(newT),\n    moteId: moteId\n});\n\n// Output 2: HTTP response \u2014 clone keeps req/res (fixes \"No response object\")\nconst resp = RED.util.cloneMessage(msg);\nresp.payload = { status: \"ok\" };\nresp.statusCode = 200;\n\nreturn [udpMsg, resp];",
+        "func": "// ModeActor -> Node-RED: UDP to Contiki + HTTP response to Akka\nconst body = msg.payload || {};\nconst moteId = body.moteId;\nconst newT = (typeof body.newT !== 'undefined') ? body.newT\n    : (typeof body.periodT !== 'undefined') ? body.periodT\n        : (typeof body.newTStr !== 'undefined') ? parseInt(body.newTStr, 10)\n            : undefined;\n\nif (typeof newT === 'undefined' || Number.isNaN(Number(newT))) {\n    node.warn(\"Missing or invalid newT/periodT in payload: \" + JSON.stringify(body));\n    const errMsg = RED.util.cloneMessage(msg);\n    errMsg.payload = { error: \"missing newT/periodT\" };\n    errMsg.statusCode = 400;\n    return [null, errMsg];\n}\n\n// Output 1: UDP \u2014 JSON string (Contiki does json.loads on the packet)\n// Routed to the mote's last-seen source IP (set by the IP Tracker node), so the\n// command reaches the specific mote instead of a single fixed address.\nconst trackedIp = flow.get('node_ip_' + moteId);\nif (!trackedIp) {\n    node.warn(\"No tracked IP for mote \" + moteId + \" yet \u2014 falling back to localhost\");\n}\nconst udpMsg = RED.util.cloneMessage(msg);\nudpMsg.ip = trackedIp || 'localhost';\nudpMsg.payload = JSON.stringify({\n    action: \"SET_PERIOD\",\n    value: Number(newT),\n    moteId: moteId\n});\n\n// Output 2: HTTP response \u2014 clone keeps req/res (fixes \"No response object\")\nconst resp = RED.util.cloneMessage(msg);\nresp.payload = { status: \"ok\" };\nresp.statusCode = 200;\n\nreturn [udpMsg, resp];",
         "outputs": 2,
         "timeout": 0,
         "noerr": 0,
@@ -222,16 +242,57 @@
         "type": "udp out",
         "z": "f6f2187d.f17ca8",
         "name": "UDP Packet",
-        "addr": "localhost",
+        "addr": "",
         "iface": "",
         "port": "6000",
-        "ipv": "udp4",
+        "ipv": "udp6",
         "outport": "",
         "base64": false,
         "multicast": "false",
         "x": 810,
         "y": 600,
         "wires": []
+    },
+    {
+        "id": "revivehttpin001",
+        "type": "http in",
+        "z": "f6f2187d.f17ca8",
+        "name": "Revive",
+        "url": "/revive-node",
+        "method": "post",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 270,
+        "y": 680,
+        "wires": [
+            [
+                "revivefunc00001"
+            ]
+        ]
+    },
+    {
+        "id": "revivefunc00001",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "To Revive Command",
+        "func": "// MoteManager -> Node-RED: symmetric recovery. Mirrors the actor twin's own\n// restart-on-crash by telling the physical/simulated mote to resume operation.\nconst body = msg.payload || {};\nconst moteId = body.moteId;\n\nif (typeof moteId === 'undefined') {\n    node.warn(\"Missing moteId in revive request: \" + JSON.stringify(body));\n    const errMsg = RED.util.cloneMessage(msg);\n    errMsg.payload = { error: \"missing moteId\" };\n    errMsg.statusCode = 400;\n    return [null, errMsg];\n}\n\nconst trackedIp = flow.get('node_ip_' + moteId);\nif (!trackedIp) {\n    node.warn(\"No tracked IP for mote \" + moteId + \" yet — falling back to localhost\");\n}\nconst udpMsg = RED.util.cloneMessage(msg);\nudpMsg.ip = trackedIp || 'localhost';\nudpMsg.payload = JSON.stringify({\n    action: \"REVIVE\",\n    moteId: moteId\n});\n\nconst resp = RED.util.cloneMessage(msg);\nresp.payload = { status: \"ok\" };\nresp.statusCode = 200;\n\nreturn [udpMsg, resp];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 530,
+        "y": 680,
+        "wires": [
+            [
+                "a28d7c81a760eb9a"
+            ],
+            [
+                "1db71c7357b7485e"
+            ]
+        ]
     },
     {
         "id": "3c28b0d756a63670",

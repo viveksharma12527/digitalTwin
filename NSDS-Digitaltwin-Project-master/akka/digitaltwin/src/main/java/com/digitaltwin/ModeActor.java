@@ -41,10 +41,11 @@ public class ModeActor extends AbstractActor{
                 this.periodT = msg.newT;
                 System.out.println("Twin period T updated to: " + this.periodT + " for mote " + msg.moteId);
             })
-            // Handle mote crash messages
+            // Handle mote crash messages: mirror the physical crash by failing this
+            // actor so the supervisor (MoteManager) restarts it to a clean state.
             .match(MoteMessages.MoteCrashed.class, msg -> {
-                // Handle incoming messages here
-                System.err.println("Actor Sync: Node " + msg.moteId + " has crashed, Mirroring in Digital Twin");
+                System.err.println("CRASH! Node " + msg.moteId + " has crashed, mirroring in Digital Twin.");
+                throw new MoteCrashSimulationException(msg.moteId);
             })
             .build();
     }
