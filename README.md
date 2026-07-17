@@ -213,11 +213,3 @@ mvn clean compile exec:java -Dexec.mainClass=com.digitaltwin.App
 
 ---
 
-## 🔍 Diagnostics & macOS-Specific Gotchas
-
-* **"unknown file type in build/cooja/obj/*.o" Linker Errors**:
-  * This happens when you mixed compiling in Docker (generating Linux ELF binaries) with building/running Cooja natively on macOS (which uses Mach-O). Fix this by running `./run.sh compile` which performs a clean host compile.
-* **Cooja Fails to start with `-quickstart` error**:
-  * Newer versions of Cooja (Contiki-NG v5+) use Picocli for CLI options and no longer support the old `-quickstart=` flag. Pass the path directly to the wrapper as a positional argument (e.g. `./gradlew run --args="path/to/simulation.csc"`).
-* **Akka System.in.read() Exit on Start**:
-  * The Java application uses `System.in.read()` to halt execution when ENTER is pressed. If run in the background with redirected stdin (`< /dev/null`), it exits immediately. In `run.sh`, we pipe `tail -f /dev/null` into it to keep stdin open and prevent premature exits.
