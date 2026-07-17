@@ -57,26 +57,22 @@
     },
     {
         "id": "bd7b93e6d9d157d7",
-        "type": "trigger",
+        "type": "function",
         "z": "f6f2187d.f17ca8",
-        "name": "crash",
-        "op1": "",
-        "op2": "",
-        "op1type": "nul",
-        "op2type": "payl",
-        "duration": "10",
-        "extend": true,
-        "overrideDelay": false,
-        "units": "s",
-        "reset": "",
-        "bytopic": "topic",
-        "topic": "payload.moteId",
+        "name": "crash watchdog",
+        "func": "// Per-mote dead-man's-switch: (re)start a timer every time this mote is\n// heard from, sized to a margin over its own configured period T -- not a\n// fixed window -- so a legitimately slow mote (period > old fixed 10s)\n// doesn't get falsely flagged as crashed.\nconst moteId = msg.payload && msg.payload.moteId;\nif (typeof moteId === 'undefined') { return null; }\n\nconst timers = context.get('timers') || {};\nif (timers[moteId]) {\n    clearTimeout(timers[moteId]);\n}\n\nconst periodT = flow.get('period_' + moteId) || 5; // matches DEFAULT_PERIOD\nconst marginMs = (periodT * 3 + 5) * 1000;\n\ntimers[moteId] = setTimeout(() => {\n    node.send({ payload: { moteId: moteId } });\n}, marginMs);\ncontext.set('timers', timers);\n\nreturn null;",
         "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "const timers = context.get('timers') || {};\nObject.values(timers).forEach(t => clearTimeout(t));",
+        "libs": [],
         "x": 470,
         "y": 260,
         "wires": [
             [
-                "ea981f9680f73e16"
+                "ea981f9680f73e16",
+                "crashdelay0001"
             ]
         ]
     },
@@ -138,7 +134,7 @@
         "type": "function",
         "z": "f6f2187d.f17ca8",
         "name": "parent_change",
-        "func": "msg.url = \"http://localhost:8080/parent\";\nvar raw = msg.payload.newParentId || \"\";\n// Cooja IPv6: first group first byte = mote ID (e.g. \"0201:...\" \u2192 2)\nvar parts = raw.split(\":\");\nvar parentInt = parts.length > 0 ? parseInt(parts[0].substring(0,2), 16) : 0;\nmsg.payload = {\n    moteId: msg.payload.moteId,\n    newParentId: parentInt\n};\nreturn msg;",
+        "func": "msg.url = \"http://localhost:8080/parent\";\nmsg.payload = {\n    moteId: msg.payload.moteId,\n    newParentId: msg.payload.newParentId\n};\nreturn msg;",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -218,7 +214,7 @@
         "type": "function",
         "z": "f6f2187d.f17ca8",
         "name": "To Python Command",
-        "func": "// ModeActor -> Node-RED: UDP to Contiki + HTTP response to Akka\nconst body = msg.payload || {};\nconst moteId = body.moteId;\nconst newT = (typeof body.newT !== 'undefined') ? body.newT\n    : (typeof body.periodT !== 'undefined') ? body.periodT\n        : (typeof body.newTStr !== 'undefined') ? parseInt(body.newTStr, 10)\n            : undefined;\n\nif (typeof newT === 'undefined' || Number.isNaN(Number(newT))) {\n    node.warn(\"Missing or invalid newT/periodT in payload: \" + JSON.stringify(body));\n    const errMsg = RED.util.cloneMessage(msg);\n    errMsg.payload = { error: \"missing newT/periodT\" };\n    errMsg.statusCode = 400;\n    return [null, errMsg];\n}\n\n// Output 1: UDP \u2014 JSON string (Contiki does json.loads on the packet)\n// Routed to the mote's last-seen source IP (set by the IP Tracker node), so the\n// command reaches the specific mote instead of a single fixed address.\nconst trackedIp = flow.get('node_ip_' + moteId);\nif (!trackedIp) {\n    node.warn(\"No tracked IP for mote \" + moteId + \" yet \u2014 falling back to localhost\");\n}\nconst udpMsg = RED.util.cloneMessage(msg);\nudpMsg.ip = trackedIp || 'localhost';\nudpMsg.payload = JSON.stringify({\n    action: \"SET_PERIOD\",\n    value: Number(newT),\n    moteId: moteId\n});\n\n// Output 2: HTTP response \u2014 clone keeps req/res (fixes \"No response object\")\nconst resp = RED.util.cloneMessage(msg);\nresp.payload = { status: \"ok\" };\nresp.statusCode = 200;\n\nreturn [udpMsg, resp];",
+        "func": "// ModeActor -> Node-RED: UDP to Contiki + HTTP response to Akka\nconst body = msg.payload || {};\nconst moteId = body.moteId;\nconst newT = (typeof body.newT !== 'undefined') ? body.newT\n    : (typeof body.periodT !== 'undefined') ? body.periodT\n        : (typeof body.newTStr !== 'undefined') ? parseInt(body.newTStr, 10)\n            : undefined;\n\nif (typeof newT === 'undefined' || Number.isNaN(Number(newT))) {\n    node.warn(\"Missing or invalid newT/periodT in payload: \" + JSON.stringify(body));\n    const errMsg = RED.util.cloneMessage(msg);\n    errMsg.payload = { error: \"missing newT/periodT\" };\n    errMsg.statusCode = 400;\n    return [null, errMsg];\n}\n\n// Output 1: UDP \u2014 JSON string (Contiki does json.loads on the packet)\n// Routed to the mote's last-seen source IP (set by the IP Tracker node), so the\n// command reaches the specific mote instead of a single fixed address.\nconst trackedIp = flow.get('node_ip_' + moteId);\nif (!trackedIp) {\n    node.warn(\"No tracked IP for mote \" + moteId + \" yet \u2014 falling back to localhost\");\n}\nflow.set('period_' + moteId, Number(newT));\n\nconst udpMsg = RED.util.cloneMessage(msg);\nudpMsg.ip = trackedIp || 'localhost';\nudpMsg.payload = JSON.stringify({\n    action: \"SET_PERIOD\",\n    value: Number(newT),\n    moteId: moteId\n});\n\n// Output 2: HTTP response \u2014 clone keeps req/res (fixes \"No response object\")\nconst resp = RED.util.cloneMessage(msg);\nresp.payload = { status: \"ok\" };\nresp.statusCode = 200;\n\nreturn [udpMsg, resp];",
         "outputs": 2,
         "timeout": 0,
         "noerr": 0,
@@ -254,47 +250,6 @@
         "wires": []
     },
     {
-        "id": "revivehttpin001",
-        "type": "http in",
-        "z": "f6f2187d.f17ca8",
-        "name": "Revive",
-        "url": "/revive-node",
-        "method": "post",
-        "upload": false,
-        "skipBodyParsing": false,
-        "swaggerDoc": "",
-        "x": 270,
-        "y": 680,
-        "wires": [
-            [
-                "revivefunc00001"
-            ]
-        ]
-    },
-    {
-        "id": "revivefunc00001",
-        "type": "function",
-        "z": "f6f2187d.f17ca8",
-        "name": "To Revive Command",
-        "func": "// MoteManager -> Node-RED: symmetric recovery. Mirrors the actor twin's own\n// restart-on-crash by telling the physical/simulated mote to resume operation.\nconst body = msg.payload || {};\nconst moteId = body.moteId;\n\nif (typeof moteId === 'undefined') {\n    node.warn(\"Missing moteId in revive request: \" + JSON.stringify(body));\n    const errMsg = RED.util.cloneMessage(msg);\n    errMsg.payload = { error: \"missing moteId\" };\n    errMsg.statusCode = 400;\n    return [null, errMsg];\n}\n\nconst trackedIp = flow.get('node_ip_' + moteId);\nif (!trackedIp) {\n    node.warn(\"No tracked IP for mote \" + moteId + \" yet — falling back to localhost\");\n}\nconst udpMsg = RED.util.cloneMessage(msg);\nudpMsg.ip = trackedIp || 'localhost';\nudpMsg.payload = JSON.stringify({\n    action: \"REVIVE\",\n    moteId: moteId\n});\n\nconst resp = RED.util.cloneMessage(msg);\nresp.payload = { status: \"ok\" };\nresp.statusCode = 200;\n\nreturn [udpMsg, resp];",
-        "outputs": 2,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 530,
-        "y": 680,
-        "wires": [
-            [
-                "a28d7c81a760eb9a"
-            ],
-            [
-                "1db71c7357b7485e"
-            ]
-        ]
-    },
-    {
         "id": "3c28b0d756a63670",
         "type": "debug",
         "z": "f6f2187d.f17ca8",
@@ -320,5 +275,53 @@
         "x": 810,
         "y": 660,
         "wires": []
+    },
+    {
+        "id": "crashdelay0001",
+        "type": "delay",
+        "z": "f6f2187d.f17ca8",
+        "name": "recovery delay",
+        "pauseType": "delay",
+        "timeout": "3",
+        "timeoutUnits": "seconds",
+        "rate": "1",
+        "nbRateUnits": "1",
+        "rateUnits": "second",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": false,
+        "allowrate": false,
+        "outputs": 1,
+        "x": 470,
+        "y": 340,
+        "wires": [
+            [
+                "revivehandler0001"
+            ]
+        ]
+    },
+    {
+        "id": "revivehandler0001",
+        "type": "function",
+        "z": "f6f2187d.f17ca8",
+        "name": "revive_handler",
+        "func": "// Node-RED owns crash -> physical revive coordination (symmetric\n// recovery), independent of any callback from Akka: it already knows a\n// mote crashed (the watchdog is what reported it), so after a fixed\n// recovery delay it tells the physical/simulated mote to resume, then\n// confirms the recovery back to Akka so the twin/dashboard can reflect it.\nconst moteId = msg.payload && msg.payload.moteId;\nif (typeof moteId === 'undefined') { return [null, null]; }\n\nconst trackedIp = flow.get('node_ip_' + moteId);\nif (!trackedIp) {\n    node.warn('No tracked IP for mote ' + moteId + ' yet \u2014 revive will fall back to localhost');\n}\nconst udpMsg = RED.util.cloneMessage(msg);\nudpMsg.ip = trackedIp || 'localhost';\nudpMsg.payload = JSON.stringify({ action: 'REVIVE', moteId: moteId });\n\nconst revivedMsg = RED.util.cloneMessage(msg);\nrevivedMsg.url = 'http://localhost:8080/revived';\nrevivedMsg.payload = { moteId: moteId };\n\nreturn [udpMsg, revivedMsg];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 630,
+        "y": 340,
+        "wires": [
+            [
+                "a28d7c81a760eb9a"
+            ],
+            [
+                "98f6adc93773c258"
+            ]
+        ]
     }
 ]

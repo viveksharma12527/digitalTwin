@@ -104,6 +104,19 @@ public class DigitalTwinServer extends AllDirectives {
                         return complete("Crash handled");
                     })
                 )
+            )),
+
+            // Called by Node-RED once it has told the physical/simulated mote to
+            // resume, after Node-RED itself decided to revive it (see MoteManager's
+            // supervisorStrategy comment on why that decision doesn't live in Akka).
+            path("revived", () -> withCors(
+                post(() ->
+                    entity(Jackson.unmarshaller(MoteMessages.MoteRevived.class), msg -> {
+                        manager.tell(msg, ActorRef.noSender());
+                        broadcast(msg);
+                        return complete("Revive handled");
+                    })
+                )
             ))
         );
 

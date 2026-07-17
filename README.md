@@ -22,7 +22,7 @@ This project implements a **real-time Digital Twin** of an IoT low-power wireles
                                     ↕
                   ┌──────────────────────────────────────────────────┐
                   │            AKKA DIGITAL TWIN (Java)              │
-                  │  SupervisorActor ◄──► IoTNodeActor ghost copies  │
+                  │   MoteManager (supervisor) ◄──► ModeActor twins  │
                   └──────────────────────────────────────────────────┘
 ```
 
@@ -40,18 +40,20 @@ This project implements a **real-time Digital Twin** of an IoT low-power wireles
 | :--- | :--- | :--- | :--- | :--- |
 | **UDP/IPv6** | `5000` | Contiki Nodes | Node-RED | Telemetry channel (parent change, app messages, crash reports) |
 | **UDP/IPv6** | `6000` | Node-RED | Contiki Nodes | Command channel (message period T changes) |
-| **HTTP/JSON**| `8080` | Node-RED | Akka Twin | HTTP POST endpoints to update/crash virtual actors |
-| **HTTP/JSON**| `1880` | User/Akka | Node-RED | Set period endpoints `/set-params` |
+| **HTTP/JSON**| `8080` | Node-RED | Akka Twin | HTTP POST endpoints reporting physical-layer facts (`/parent`, `/traffic`, `/crash`, `/revived`) and relaying period changes (`/updateT`) |
+| **HTTP/JSON**| `1880` | Akka | Node-RED | Set period endpoint `/set-params` |
 | **TCP**      | `60001`| Cooja Mote 1 | tunslip6 | Cooja serial port socket |
 
 ### JSON Specifications
 * **Parent Changed Event (Contiki ➔ Node-RED ➔ Akka):**
   ```json
-  {"nodeId": 2, "event": "PARENT_CHANGE", "newParentId": "0201:0000:0000:0000"}
+  {"moteId": 2, "type": "PARENT_CHANGE", "newParentId": 3}
   ```
+  `newParentId` is the parent's numeric node id, not an encoded address — both `iot-node.c` and
+  `contiki-simulator.py` send it directly, so Node-RED just passes it through unchanged.
 * **App Message Telemetry (Contiki ➔ Node-RED ➔ Akka):**
   ```json
-  {"nodeId": 2, "event": "TRAFFIC", "seq": 2400500, "parent": "0201:0000:0000:0000"}
+  {"moteId": 2, "type": "TRAFFIC", "seq": 2400500, "parent": "0201:0000:0000:0000"}
   ```
 * **Set Period Command (HTTP Client ➔ Node-RED ➔ Contiki):**
   ```json
@@ -59,8 +61,14 @@ This project implements a **real-time Digital Twin** of an IoT low-power wireles
   ```
 * **Crash Mote Event (Contiki ➔ Node-RED ➔ Akka):**
   ```json
-  {"nodeId": 2, "event": "crash"}
+  {"moteId": 2, "type": "CRASH"}
   ```
+* **Revive Confirmation (Node-RED ➔ Akka, after Node-RED itself decides to revive):**
+  ```json
+  {"moteId": 2}
+  ```
+  POSTed to `/revived` once Node-RED has sent the physical/simulated mote a `REVIVE` UDP command —
+  Akka never calls out to request this; it only learns about it after the fact.
 
 ---
 
@@ -71,7 +79,15 @@ Before you begin, install these dependencies natively on your Mac (compilation f
 ### 1. Homebrew & System Utilities
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-brew install git maven node
+brew install git maven node make
+```
+⚠️ **GNU Make version:** macOS ships GNU Make 3.81, but the Contiki-NG build requires
+Make 4.0+. `brew install make` installs a newer version as `gmake` alongside the
+system one. Make it the `make` your shell finds first:
+```bash
+echo 'export PATH="/opt/homebrew/opt/make/libexec/gnubin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+make --version   # should report 4.0 or later
 ```
 
 ### 2. XQuartz (for Cooja GUI on Mac) ⚠️ IMPORTANT
@@ -133,7 +149,7 @@ Run the compiler script to build the firmware natively on macOS. This will autom
 ### Step 2: Start All Services
 Start the Node-RED runtime, compile and launch the Akka HTTP server, and boot the Cooja Simulator:
 ```bash
-./run.sh start
+./run.sh start./run.sh start
 ```
 *Note: This command starts the serial bridge `tunslip6` in the background. If sudo password prompt is required, it will output a terminal warning. You can also run the command with `sudo ./run.sh start` to ensure your password is cached for the tunnel.*
 

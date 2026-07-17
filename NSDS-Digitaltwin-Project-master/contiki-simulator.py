@@ -5,7 +5,11 @@ import threading
 
 # --- CONFIGURATION ---
 MOTE_ID = 1
-NODE_RED_IP = "127.0.0.1"
+# Node-RED's UDP input is IPv6-only (it also has to receive genuine IPv6
+# traffic from real Cooja/Contiki-NG motes over tunslip6), so this simulator
+# talks IPv6 loopback rather than plain IPv4 -- an AF_INET socket to
+# 127.0.0.1 would never reach an "udp6"-only listener.
+NODE_RED_IP = "::1"
 NODE_RED_PORT = 5000  # Node-RED listens here
 LISTEN_PORT = 6000    # Mote listens here for commands
 # ---------------------
@@ -19,7 +23,7 @@ state = {
 
 def send_to_nodered(data_type, extra_info={}):
     """Sends a UDP packet to Node-RED."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
     payload = {
         "moteId": MOTE_ID,
         "type": data_type,
@@ -34,27 +38,29 @@ def periodic_traffic():
     """Simulates dummy traffic flow."""
     while True:
         if state["is_running"]:
-            # Format parent as mock IPv6 string so Node-RED can parse it
-            parent_str = f"0{state['parent']}00::0"
-            send_to_nodered("TRAFFIC", {"seq": int(time.time()), "parent": parent_str})
+            send_to_nodered("TRAFFIC", {"seq": int(time.time()), "parent": state["parent"]})
         time.sleep(state["T"])
 
 def listen_for_commands():
     """Listens for instructions from Node-RED (Digital Twin mirror)."""
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.bind(("0.0.0.0", LISTEN_PORT))
+    with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as s:
+        s.bind(("::", LISTEN_PORT))
         print(f"Mote {MOTE_ID} listening for commands on port {LISTEN_PORT}...")
         while True:
             data, addr = s.recvfrom(1024)
             cmd = json.loads(data.decode('utf-8'))
-            
+
             if cmd.get("action") == "SET_PERIOD":
                 state["T"] = cmd["value"]
                 print(f"[CMD] Period T updated to {state['T']}")
-                
+
             elif cmd.get("action") == "CRASH":
                 state["is_running"] = False
                 print("[CMD] Node CRASHED!")
+
+            elif cmd.get("action") == "REVIVE":
+                state["is_running"] = True
+                print("[CMD] Node REVIVED!")
 
 # Start Threads
 threading.Thread(target=periodic_traffic, daemon=True).start()
@@ -66,7 +72,6 @@ while True:
     val = input()
     if val == 'p':
         state["parent"] += 1
-        parent_str = f"0{state['parent']}00::0"
-        send_to_nodered("PARENT_CHANGE", {"newParentId": parent_str})
+        send_to_nodered("PARENT_CHANGE", {"newParentId": state["parent"]})
     elif val == 'q':
         break

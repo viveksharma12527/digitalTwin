@@ -4,18 +4,22 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class MoteMessages {
-    public interface Command {}
+    public interface Command {
+        int moteId();
+    }
     // 1. Physical -> Digital: Mirroring Parent Changes
     public static final class ParentChanged implements Command {
         public final int moteId;
         public final int newParentId;
-        
+
         @JsonCreator
         public ParentChanged(@JsonProperty("moteId") int moteId, @JsonProperty("newParentId") int newParentId) {
             this.moteId = moteId;
             this.newParentId = newParentId;
         }
-    } 
+
+        @Override public int moteId() { return moteId; }
+    }
     // 2. Physical -> Digital: Mimicking Message Flow (Traffic)
 
     public static final class AppTrafficReceived implements Command {
@@ -25,6 +29,7 @@ public class MoteMessages {
             this.moteId = moteId;
         }
 
+        @Override public int moteId() { return moteId; }
     }
     // 3. Digital -> Physical: Synchronizing Period T
     public static final class UpdatePeriodT implements Command {
@@ -36,6 +41,8 @@ public class MoteMessages {
             this.moteId = moteId;
             this.newT = newT;
         }
+
+        @Override public int moteId() { return moteId; }
     }
 
     // 4. Physical -> Digital: Mirroring Crash
@@ -44,7 +51,19 @@ public class MoteMessages {
 
         @JsonCreator
         public MoteCrashed(@JsonProperty("moteId") int moteId) { this.moteId = moteId; }
+
+        @Override public int moteId() { return moteId; }
     }
 
-    
+    // 5. Physical -> Digital: Mirroring Recovery (symmetric to MoteCrashed).
+    // Sent by Node-RED once it has told the physical/simulated mote to resume,
+    // so the twin (and dashboard) can reflect that the mote is healthy again.
+    public static final class MoteRevived implements Command {
+        public final int moteId;
+
+        @JsonCreator
+        public MoteRevived(@JsonProperty("moteId") int moteId) { this.moteId = moteId; }
+
+        @Override public int moteId() { return moteId; }
+    }
 }

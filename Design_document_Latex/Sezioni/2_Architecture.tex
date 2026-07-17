@@ -64,9 +64,9 @@
   node[lbl, midway, below] {UDP:6000\\\texttt{SET\_PERIOD}/\texttt{REVIVE}};
 
 \draw[->] ($(nodered.east)+(0,0.45)$) -- ($(akkapanel.west)+(0,0.45)$)
-  node[lbl, midway, above] {HTTP\\\texttt{/parent /traffic /crash}};
+  node[lbl, midway, above] {HTTP\\\texttt{/parent /traffic /crash /revived}};
 \draw[->] ($(akkapanel.west)+(0,-0.45)$) -- ($(nodered.east)+(0,-0.45)$)
-  node[lbl, midway, below] {HTTP\\\texttt{/set-params /revive-node}};
+  node[lbl, midway, below] {HTTP\\\texttt{/set-params}};
 
 \draw[->] (akkapanel.south) -- (dash.north) node[lbl, midway, right] {SSE\\\texttt{:8080/events}};
 \end{tikzpicture}

@@ -56,6 +56,10 @@ public final class DashboardEvents {
             MoteMessages.MoteCrashed m = (MoteMessages.MoteCrashed) msg;
             return new Payload("CRASH", m.moteId, null, null);
         }
+        if (msg instanceof MoteMessages.MoteRevived) {
+            MoteMessages.MoteRevived m = (MoteMessages.MoteRevived) msg;
+            return new Payload("REVIVED", m.moteId, null, null);
+        }
         throw new IllegalArgumentException("Unknown command: " + msg.getClass());
     }
 }

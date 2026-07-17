@@ -9,7 +9,9 @@
  *
  * Message types sent to Node-RED (matching Python simulator exactly):
  *   TRAFFIC      : {"moteId":<id>,"type":"TRAFFIC","seq":<n>,"parent":"<ip>"}
- *   PARENT_CHANGE: {"moteId":<id>,"type":"PARENT_CHANGE","newParentId":"<ip>"}
+ *   PARENT_CHANGE: {"moteId":<id>,"type":"PARENT_CHANGE","newParentId":<id>}
+ *                  (newParentId is the parent's numeric node id, not an
+ *                  encoded address -- see parent_id_from_addr())
  *
  * Commands received from Node-RED (same JSON as Python listener):
  *   {"action":"SET_PERIOD","value":<seconds>}   -> update send period
@@ -80,6 +82,17 @@ static const char *ipaddr_to_str(const uip_ipaddr_t *addr)
 static int ipaddr_equal(const uip_ipaddr_t *a, const uip_ipaddr_t *b)
 {
   return memcmp(a, b, sizeof(uip_ipaddr_t)) == 0;
+}
+
+/*
+ * A Contiki-NG node's IID is derived from its short address as
+ * 0000:00ff:fe00:<node_id>, so the node's numeric id lives in the last two
+ * bytes. Sending that id directly (instead of an encoded IP string) means
+ * Node-RED doesn't have to reverse-engineer which byte group it lives in.
+ */
+static int parent_id_from_addr(const uip_ipaddr_t *addr)
+{
+  return (addr->u8[14] << 8) | addr->u8[15];
 }
 
 /* ------------------------------------------------------------------ */
@@ -192,9 +205,9 @@ PROCESS_THREAD(iot_node_process, ev, data)
       if(!ipaddr_equal(&current_parent, &last_parent_addr)) {
         /* Build PARENT_CHANGE JSON — matches Python send_to_nodered("PARENT_CHANGE", ...) */
         snprintf(msg_buf, sizeof(msg_buf),
-          "{\"moteId\":%d,\"type\":\"PARENT_CHANGE\",\"newParentId\":\"%s\"}",
+          "{\"moteId\":%d,\"type\":\"PARENT_CHANGE\",\"newParentId\":%d}",
           node_id,
-          ipaddr_to_str(&current_parent));
+          parent_id_from_addr(&current_parent));
 
         LOG_INFO("[SENT] PARENT_CHANGE: %s\n", msg_buf);
         simple_udp_sendto(&udp_to_nodered,
@@ -203,6 +216,7 @@ PROCESS_THREAD(iot_node_process, ev, data)
         /* Save new parent */
         uip_ipaddr_copy(&last_parent_addr, &current_parent);
         strncpy(parent_str, ipaddr_to_str(&current_parent), sizeof(parent_str) - 1);
+        parent_str[sizeof(parent_str) - 1] = '\0';
       }
     }
 

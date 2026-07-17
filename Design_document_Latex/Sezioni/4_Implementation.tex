@@ -8,8 +8,10 @@
   surface, and an SSE broadcast built on \texttt{Source.queue} + \texttt{BroadcastHub} so
   every connected dashboard receives the same live event stream.
 \item \textbf{Coordination layer:} Node-RED, using only core nodes (\texttt{udp in/out},
-  \texttt{http in/request}, \texttt{switch}, \texttt{trigger}, \texttt{function}) so the flow
-  remains portable and inspectable without custom modules.
+  \texttt{http in/request}, \texttt{switch}, \texttt{delay}, \texttt{function}) so the flow
+  remains portable and inspectable without custom modules; the crash watchdog is a
+  \texttt{function} node rather than a fixed-duration \texttt{trigger}, so its timeout can be
+  derived per-mote from the mote's own configured period.
 \item \textbf{Dashboard:} dependency-free JavaScript and Canvas 2D, with a force-directed
   layout for the topology view and a built-in demo mode that requires no backend.
 \end{itemize}
@@ -26,12 +28,14 @@ UDP peers standing in for physical motes:
   produce a \texttt{SET\_PERIOD} UDP command addressed \emph{only} to that mote's tracked IP,
   with a safe fallback when no address has been observed yet.
 \item \textbf{Crash/revive symmetry:} a simulated crash was confirmed to (i) restart the
-  correct twin with clean state, without disturbing sibling twins, and (ii) deliver a
-  \texttt{REVIVE} command to the physical/simulated mote, closing the recovery loop required
-  by the assignment.
-\item \textbf{Dual-stack addressing:} both IPv4-loopback and native IPv6 traffic were
-  confirmed to be received and routed correctly by the coordination layer, matching the real
-  \texttt{tunslip6}-bridged deployment.
+  correct twin with clean state, without disturbing sibling twins, and (ii) cause
+  \emph{Node-RED}, on its own initiative after a fixed recovery delay, to deliver a
+  \texttt{REVIVE} command to the physical/simulated mote and confirm it back to Akka via
+  \texttt{/revived}, closing the recovery loop required by the assignment without Akka ever
+  calling out to trigger it.
+\item \textbf{Dual-stack addressing:} both IPv6-loopback (used by \texttt{contiki-simulator.py})
+  and native IPv6 mesh traffic (used by real Cooja motes over \texttt{tunslip6}) were confirmed
+  to be received and routed correctly by the coordination layer's \texttt{udp6} listener.
 \end{itemize}
 
 \subsection*{Conclusion}

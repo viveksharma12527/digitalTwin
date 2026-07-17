@@ -186,9 +186,15 @@ start_akka() {
   fi
 
   log "Building + starting Akka → log: $LOG_AKKA"
-  # Use 'tail -f /dev/null' pipe so App.java's System.in.read() blocks forever (never exits)
-  (cd "$AKKA_DIR" && tail -f /dev/null | mvn -q clean compile exec:java \
-    -Dexec.mainClass=com.digitaltwin.App 2>&1) > "$LOG_AKKA" 2>&1 &
+  # `exec mvn` replaces the subshell's own process image with mvn instead of
+  # forking mvn as a child, so $! is mvn's real PID with nothing to orphan.
+  # exec:java runs App's main() in that same process (no further forking), and
+  # App.java now shuts down on a JVM shutdown hook instead of blocking on
+  # stdin, so a plain `kill -TERM` on this PID is enough to stop it cleanly.
+  (
+    cd "$AKKA_DIR"
+    exec mvn -q clean compile exec:java -Dexec.mainClass=com.digitaltwin.App
+  ) > "$LOG_AKKA" 2>&1 &
   save_pid $! "$PID_AKKA"
   ok "Akka started (pid $!)"
 
@@ -366,9 +372,11 @@ cmd_stop() {
     sudo kill -KILL "$nr_pid" 2>/dev/null || true
   fi
 
-  # Kill any stray processes by name (using sudo)
+  # Kill any stray Cooja/Gradle/tunslip6 processes by name (using sudo).
+  # Akka's PID is now tracked accurately (see start_akka), so it doesn't need
+  # a name-based fallback here; Cooja's gradlew wrapper still forks in a way
+  # this script doesn't track precisely, so it keeps this broader fallback.
   log "Stopping any remaining processes by name..."
-  sudo pkill -f "com.digitaltwin.App" 2>/dev/null || true
   sudo pkill -f "org.contikios.cooja" 2>/dev/null || true
   sudo pkill -f "GradleWrapperMain" 2>/dev/null || true
   sudo pkill -f tunslip6 2>/dev/null || true

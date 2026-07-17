@@ -22,6 +22,13 @@ public class MoteManager extends AbstractActor {
     // One-For-One: a simulated mote crash only restarts that mote's own twin,
     // never its siblings. Restarting recreates the twin via ModeActor.props(),
     // resetting currentParent/parentHistory/periodT to a clean state.
+    //
+    // Deciding whether/when to revive the physical or simulated mote is
+    // coordination logic that belongs in Node-RED (per the project's design
+    // constraint), not here: this decider only resets the twin's own state.
+    // Node-RED independently notices the crash (it's the one that reported it
+    // via POST /crash in the first place) and drives the physical revive,
+    // later confirming it back to Akka via POST /revived.
     @Override
     public SupervisorStrategy supervisorStrategy() {
         return new OneForOneStrategy(
@@ -30,12 +37,6 @@ public class MoteManager extends AbstractActor {
             DeciderBuilder
                 .match(MoteCrashSimulationException.class, e -> {
                     System.out.println("Manager: recovering mote " + e.moteId + " -> restarting twin actor");
-                    // Mirror the twin's own recovery back onto the physical/simulated mote,
-                    // via Node-RED, so the crash recovery is symmetric on both sides.
-                    PhysicalNodeSync.reviveNode(e.moteId).exceptionally(err -> {
-                        System.err.println("Manager: physical revive failed for mote " + e.moteId + ": " + err.getMessage());
-                        return null;
-                    });
                     return SupervisorStrategy.restart();
                 })
                 .matchAny(e -> SupervisorStrategy.escalate())
@@ -50,11 +51,12 @@ public class MoteManager extends AbstractActor {
             .match(MoteMessages.AppTrafficReceived.class, this::routeMessage)
             .match(MoteMessages.UpdatePeriodT.class, this::routeMessage)
             .match(MoteMessages.MoteCrashed.class, this::routeMessage)
+            .match(MoteMessages.MoteRevived.class, this::routeMessage)
             .build();
     }
 
     private void routeMessage(MoteMessages.Command msg) {
-        int moteId = getMoteId(msg);
+        int moteId = msg.moteId();
 
         ActorRef twin = twins.get(moteId);
         if (twin == null) {
@@ -65,20 +67,6 @@ public class MoteManager extends AbstractActor {
             twins.put(moteId, twin);
         }
         twin.tell(msg, getSelf());
-    }
-
-    private int getMoteId(MoteMessages.Command msg) {
-        if (msg instanceof MoteMessages.ParentChanged) {
-            return ((MoteMessages.ParentChanged) msg).moteId;
-        } else if (msg instanceof MoteMessages.AppTrafficReceived) {
-            return ((MoteMessages.AppTrafficReceived) msg).moteId;
-        } else if (msg instanceof MoteMessages.UpdatePeriodT) {
-            return ((MoteMessages.UpdatePeriodT) msg).moteId;
-        } else if (msg instanceof MoteMessages.MoteCrashed) {
-            return ((MoteMessages.MoteCrashed) msg).moteId;
-        }
-        //throw new IllegalArgumentException("Unknown message type: " + msg.getClass());
-        return -1; // Should never reach here
     }
 
 }

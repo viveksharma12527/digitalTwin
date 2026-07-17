@@ -129,6 +129,7 @@ function handleEvent(evt) {
     case 'PARENT_CHANGED': onParentChanged(evt);  break;
     case 'PERIOD_UPDATED': onPeriodUpdated(evt);  break;
     case 'CRASH':          onCrash(evt);          break;
+    case 'REVIVED':        onRevived(evt);        break;
     default:
       console.warn('[iot] unknown event type', evt.type);
   }
@@ -173,6 +174,14 @@ function onCrash({ moteId }) {
   document.getElementById('stat-crashes').textContent = statCrashes;
   // flash red ring
   anims.push({ type: 'crash', moteId, t: 0, duration: 800 });
+  if (inspectorMoteId === moteId) openInspector(moteId);
+}
+
+function onRevived({ moteId }) {
+  const m = ensureMote(moteId);
+  m.crashed = false;
+  // halo pulse to signal recovery
+  anims.push({ type: 'haze', moteId, t: 0, duration: CFG.hazeLifetime });
   if (inspectorMoteId === moteId) openInspector(moteId);
 }
 

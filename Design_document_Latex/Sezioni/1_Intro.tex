@@ -35,7 +35,7 @@ the assignment is realized, and which component is responsible for it.
 (c) & Period $T$ change $\rightarrow$ mirrored to node &
   Dashboard/actor \texttt{POST /updateT} $\rightarrow$ Node-RED \texttt{/set-params} $\rightarrow$ UDP \texttt{SET\_PERIOD} to the specific mote \\
 (d) & Crash $\rightarrow$ mirrored, recovery symmetric &
-  \texttt{CRASH} $\rightarrow$ actor throws $\rightarrow$ supervisor restarts twin $\rightarrow$ Node-RED \texttt{/revive-node} $\rightarrow$ UDP \texttt{REVIVE} to the same mote \\
+  \texttt{CRASH} $\rightarrow$ actor throws $\rightarrow$ supervisor restarts twin; separately, Node-RED (owning the recovery decision) sends UDP \texttt{REVIVE} to the same mote after a delay $\rightarrow$ \texttt{POST /revived} confirms back to Akka \\
 \bottomrule
 \end{tabularx}
 \caption{Synchronization requirements and their implementation.}

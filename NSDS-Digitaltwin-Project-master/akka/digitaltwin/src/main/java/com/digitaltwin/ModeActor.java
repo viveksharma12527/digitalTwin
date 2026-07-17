@@ -22,7 +22,10 @@ public class ModeActor extends AbstractActor{
         return receiveBuilder()
         // Handle parent change messages
             .match(MoteMessages.ParentChanged.class, msg -> {
-                if (this.currentParent != 0) {
+                // Only push into history when the parent actually changed -- a
+                // duplicate/retransmitted event for the same parent must not
+                // evict a genuinely distinct earlier parent from the K-history.
+                if (this.currentParent != 0 && msg.newParentId != this.currentParent) {
                     parentHistory.addFirst(this.currentParent);
                     if (parentHistory.size() > K) {
                         parentHistory.removeLast();
@@ -46,6 +49,11 @@ public class ModeActor extends AbstractActor{
             .match(MoteMessages.MoteCrashed.class, msg -> {
                 System.err.println("CRASH! Node " + msg.moteId + " has crashed, mirroring in Digital Twin.");
                 throw new MoteCrashSimulationException(msg.moteId);
+            })
+            // Physical recovery is driven and confirmed by Node-RED; this is just
+            // the twin acknowledging that its physical counterpart is healthy again.
+            .match(MoteMessages.MoteRevived.class, msg -> {
+                System.out.println("Node " + msg.moteId + " revived.");
             })
             .build();
     }

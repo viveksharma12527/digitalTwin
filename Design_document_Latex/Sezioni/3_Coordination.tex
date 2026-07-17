@@ -3,9 +3,11 @@
 \subsection*{Node-RED as the Only Cross-Layer Component}
 Per the assignment's constraint, no IoT-node-specific protocol knowledge exists in Contiki
 or in Akka: Contiki only understands generic commands (\texttt{SET\_PERIOD}, \texttt{CRASH},
-\texttt{REVIVE}); Akka only understands actor messages and issues generic HTTP intents
-(``sync period for mote $X$'', ``revive mote $X$'') toward Node-RED. All translation lives in
-one importable/swappable flow (\texttt{nodered.json}):
+\texttt{REVIVE}); Akka only understands actor messages, is told facts about the physical layer
+(\texttt{/traffic}, \texttt{/parent}, \texttt{/crash}, \texttt{/revived}), and issues at most a
+generic relay intent (``sync period for mote $X$'') toward Node-RED -- it never decides on its
+own initiative to command the physical/simulated node. All translation, and all coordination
+policy, lives in one importable/swappable flow (\texttt{nodered.json}):
 \begin{itemize}
 \item An \textbf{IP Tracker} function records, for every inbound UDP packet, the sender's
   source address keyed by \texttt{moteId} in flow context (\texttt{node\_ip\_\textless id\textgreater}).
@@ -13,20 +15,26 @@ one importable/swappable flow (\texttt{nodered.json}):
   request is routed to the specific mote's last-known address rather than a single fixed
   target, so concurrent multi-mote operation is correct.
 \item A \textbf{switch} node dispatches \texttt{TRAFFIC} and \texttt{PARENT\_CHANGE} events
-  to distinct HTTP calls (\texttt{/traffic}, \texttt{/parent}); a \textbf{trigger} node acts
-  as a dead-man's switch, firing \texttt{/crash} when a mote has been silent for longer than
-  its expected period, mirroring a physical crash (e.g. a mote stopped in Cooja) even when it
-  cannot itself announce its own death.
+  to distinct HTTP calls (\texttt{/traffic}, \texttt{/parent}) -- both fields, including the
+  parent's numeric id, are passed through as-is, since motes already report it as a plain
+  integer rather than an encoded address; a \textbf{function-based} dead-man's switch
+  (\texttt{crash watchdog}) replaces a fixed-duration \texttt{trigger} node, re-arming a
+  per-mote timer sized to $3 \times periodT + 5$ seconds -- read from flow context, updated on
+  every successful \texttt{SET\_PERIOD} -- so a mote with a longer configured period is not
+  mistaken for a crashed one. Firing \texttt{/crash} mirrors a physical crash (e.g. a mote
+  stopped in Cooja) even when it cannot itself announce its own death.
 \item UDP sockets are opened in \textbf{dual-stack} (\texttt{udp6}) mode, since motes reach
   Node-RED over a real IPv6 path (\texttt{tunslip6} bridging Cooja's RPL mesh, rooted at
   \texttt{fd00::1}, to the host); an IPv4-only socket would silently drop all genuine mesh
-  traffic while still appearing to work under local loopback testing.
+  traffic while still appearing to work under local loopback testing. \texttt{contiki-simulator.py}
+  speaks the same IPv6-loopback family for this reason.
 \end{itemize}
 
 \subsection*{Symmetric Crash Recovery}
 Requirement (d) demands more than mirroring a crash: recovery must be \emph{symmetric}, i.e.
-also applied back to the physical node. This is implemented as a closed loop across all three
-layers:
+also applied back to the physical node. Deciding \emph{when} to revive is coordination logic,
+so -- per the assignment's constraint -- that decision is made entirely in Node-RED, never in
+Akka:
 \begin{sloppypar}
 \begin{enumerate}
 \item A crash (self-triggered \texttt{CRASH} command, or externally detected silence) reaches
@@ -35,12 +43,17 @@ layers:
 \item \texttt{MoteManager} applies a \textbf{one-for-one} supervisor strategy: only
   the crashed mote's own twin is restarted, siblings are unaffected. Restarting recreates the
   actor from \texttt{ModeActor.props()}, resetting \texttt{currentParent},
-  \texttt{parentHistory} and \texttt{periodT} to a clean state.
-\item In the same decision, the supervisor triggers \texttt{PhysicalNodeSync}'s revive call,
-  an asynchronous HTTP request to Node-RED's \texttt{/revive-node} endpoint, which resolves the
-  mote's tracked IP and sends it a \texttt{REVIVE} UDP command, resuming its periodic traffic.
+  \texttt{parentHistory} and \texttt{periodT} to a clean state. This is the \emph{entire} decision
+  the supervisor makes -- it does not call out to Node-RED.
+\item Node-RED already knows the mote crashed (it is what reported it via \texttt{/crash} in the
+  first place), so after a fixed recovery delay it independently sends the mote a
+  \texttt{REVIVE} UDP command, then confirms the recovery back to Akka via
+  \texttt{POST /revived \{moteId\}}. \texttt{MoteManager} routes this to the twin (which just logs
+  it -- there is no state left to reset) and \texttt{DigitalTwinServer} broadcasts a
+  \texttt{REVIVED} dashboard event.
 \end{enumerate}
 \end{sloppypar}
-The revive trigger is intentionally placed in the supervisor rather than inside
-\texttt{ModeActor} itself, so that twin actors remain free of network side effects and the
-recovery policy stays entirely inspectable/replaceable at the orchestration layer.
+Placing the revive \emph{decision} in Node-RED rather than in the supervisor means the recovery
+policy (whether to revive at all, how long to wait, whether to retry) stays entirely
+inspectable/replaceable by editing the flow, with zero changes to Akka or Contiki-NG source --
+exactly the ``swap the flow to change the twin logic'' property the assignment asks for.

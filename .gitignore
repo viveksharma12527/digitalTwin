@@ -35,6 +35,9 @@ hs_err_pid*
 symbols.c
 symbols.h
 
+# Generated at run.sh start_cooja time from contiki/simulation.csc
+contiki/.generated.simulation.csc
+
 # Compiled binaries and libraries
 **/*.cooja
 **/*.cooja.lnk

@@ -1,29 +1,31 @@
 package com.digitaltwin;
+import java.util.concurrent.CountDownLatch;
+
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 
 public class App{
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
         System.out.println("Hello World!");
-
 
         ActorSystem actorSystem = ActorSystem.create("DigitalTwinActorSystem");
         ActorRef moteManager = actorSystem.actorOf(MoteManager.props(), "moteManager");
 
         DigitalTwinServer server = new DigitalTwinServer(moteManager);
         server.startHttpServer(actorSystem);
-        // Terminate the actor system
-        System.out.println("Press ENTER to terminate...");
 
-        try {
-            // This line stops the 'main' thread from finishing.
-            // It will wait here until you press Enter in the console.
-            System.in.read(); 
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            // Cleanly shut down the system when you exit
+        // Block the main thread until the JVM is asked to stop (SIGTERM/kill,
+        // Ctrl-C, or run.sh's `kill -TERM`), instead of waiting on stdin --
+        // run.sh backgrounds this process with no attached terminal, so a
+        // stdin read would never return and the process could only be killed
+        // by matching its command line rather than its real PID.
+        CountDownLatch shutdownLatch = new CountDownLatch(1);
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("Shutting down...");
             actorSystem.terminate();
-        }
+            shutdownLatch.countDown();
+        }));
+
+        shutdownLatch.await();
     }
 }
