@@ -10,10 +10,6 @@ import java.util.concurrent.CompletableFuture;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-/**
- * Pushes period-T changes to the physical stack via Node-RED HTTP.
- * Node-RED forwards to Contiki over UDP; success is inferred from the HTTP response.
- */
 public final class PhysicalNodeSync {
 
     private static final String SET_PARAMS_URL = "http://127.0.0.1:1880/set-params";
@@ -34,10 +30,6 @@ public final class PhysicalNodeSync {
         }
     }
 
-    /**
-     * POST /set-params and complete successfully only when Node-RED returns HTTP 200
-     * with a body indicating success (e.g. {@code {"status":"ok"}}).
-     */
     public static CompletableFuture<Void> syncPeriodT(int moteId, int newT) {
         String json = "{\"moteId\": " + moteId + ", \"periodT\": " + newT + "}";
 
@@ -70,11 +62,6 @@ public final class PhysicalNodeSync {
                 return (Void) null;
             });
     }
-
-    // Physical revival is decided and driven by Node-RED (it's the one that
-    // detects and reports the crash), which then confirms it back to Akka via
-    // POST /revived -- see MoteManager.supervisorStrategy for why Akka doesn't
-    // call out to Node-RED to trigger it.
 
     private static boolean isSuccessBody(String body) {
         if (body == null || body.trim().isEmpty()) {

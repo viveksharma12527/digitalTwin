@@ -19,20 +19,10 @@ public class MoteManager extends AbstractActor {
         return Props.create(MoteManager.class, MoteManager::new);
     }
 
-    // One-For-One: a simulated mote crash only restarts that mote's own twin,
-    // never its siblings. Restarting recreates the twin via ModeActor.props(),
-    // resetting currentParent/parentHistory/periodT to a clean state.
-    //
-    // Deciding whether/when to revive the physical or simulated mote is
-    // coordination logic that belongs in Node-RED (per the project's design
-    // constraint), not here: this decider only resets the twin's own state.
-    // Node-RED independently notices the crash (it's the one that reported it
-    // via POST /crash in the first place) and drives the physical revive,
-    // later confirming it back to Akka via POST /revived.
     @Override
     public SupervisorStrategy supervisorStrategy() {
         return new OneForOneStrategy(
-            -1, // unlimited retries
+            -1,
             Duration.create(1, TimeUnit.MINUTES),
             DeciderBuilder
                 .match(MoteCrashSimulationException.class, e -> {
@@ -61,8 +51,6 @@ public class MoteManager extends AbstractActor {
         ActorRef twin = twins.get(moteId);
         if (twin == null) {
             System.out.println("Manager: Creating new twin actor for Mote " + moteId);
-            // Use getContext().actorOf to create a child actor
-            // This is where we use your ModeActor.props()!
             twin = getContext().actorOf(ModeActor.props(), "twin-" + moteId);
             twins.put(moteId, twin);
         }

@@ -1,25 +1,10 @@
 #!/usr/bin/env bash
-# =============================================================================
-# Digital Twin Full-Stack Runner
-# Contiki (Cooja) --> Node-RED --> Akka
-#
-# Usage:
-#   ./run.sh compile   — Build iot-node.cooja firmware natively on macOS
-#   ./run.sh start     — Start Node-RED, Akka, tunslip6, Cooja
-#   ./run.sh stop      — Kill all background services
-#   ./run.sh status    — Show live status of every component
-#   ./run.sh test      — Run end-to-end verification (UDP + HTTP)
-#   ./run.sh logs      — Tail ALL service logs
-#   ./run.sh logs akka|nodered|cooja|tunslip  — Tail one log
-# =============================================================================
 set -euo pipefail
 
-# Force C locale for sed to prevent macOS Assertion failed (advance > 0) crashes on escape codes
 sed() {
   LC_ALL=C command sed "$@"
 }
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONTIKI_NG="$HOME/contiki-ng"
 IOT_NODE_SRC="$SCRIPT_DIR/contiki/iot-node"
@@ -30,7 +15,6 @@ SIM_FILE="$SCRIPT_DIR/contiki/.generated.simulation.csc"
 COOJA_DIR="$CONTIKI_NG/tools/cooja"
 TUNSLIP_DIR="$CONTIKI_NG/tools/serial-io"
 
-# ── Log + PID storage ─────────────────────────────────────────────────────────
 LOG_DIR="$SCRIPT_DIR/logs"
 PID_DIR="$SCRIPT_DIR/.pids"
 mkdir -p "$LOG_DIR" "$PID_DIR"
@@ -47,17 +31,14 @@ PID_NODERED="$PID_DIR/nodered.pid"
 PID_COOJA="$PID_DIR/cooja.pid"
 PID_TUNSLIP="$PID_DIR/tunslip.pid"
 
-# ── Config ────────────────────────────────────────────────────────────────────
 NODERED_PORT=1880
 AKKA_PORT=8080
 TUNSLIP_PORT=60001
 TUNSLIP_PREFIX="fd00::1/64"
 
-# ── ANSI colors ───────────────────────────────────────────────────────────────
 RED='\033[0;31m';  GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m';  BOLD='\033[1m';  RESET='\033[0m'
 
-# ── Logging helpers ───────────────────────────────────────────────────────────
 ts()      { date '+%H:%M:%S'; }
 log()     { echo -e "${CYAN}[$(ts)]${RESET} $*" | tee -a "$LOG_MAIN"; }
 ok()      { echo -e "${GREEN}[$(ts)] ✅ $*${RESET}" | tee -a "$LOG_MAIN"; }
@@ -67,12 +48,10 @@ banner()  { echo -e "\n${BOLD}${BLUE}══════════════�
             echo -e "${BOLD}${BLUE}  $*${RESET}"; \
             echo -e "${BOLD}${BLUE}══════════════════════════════════════${RESET}\n"; }
 
-# ── PID helpers ───────────────────────────────────────────────────────────────
 save_pid()  { echo "$1" > "$2"; }
 read_pid()  { [[ -f "$1" ]] && cat "$1" || echo ""; }
 is_alive()  { local p; p=$(read_pid "$1"); [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null; }
 
-# ── Port helpers ──────────────────────────────────────────────────────────────
 port_open() { lsof -i :"$1" -sTCP:LISTEN -t &>/dev/null; }
 wait_port() {
   local port=$1 label=$2 timeout=${3:-30}
@@ -89,9 +68,6 @@ wait_port() {
   ok "$label is up on port $port"
 }
 
-# =============================================================================
-# COMPILE
-# =============================================================================
 cmd_compile() {
   banner "Step 1 — Compile Contiki Firmware"
 
@@ -120,10 +96,6 @@ cmd_compile() {
   fi
 }
 
-# =============================================================================
-# START INDIVIDUAL SERVICES
-# =============================================================================
-
 start_nodered() {
   banner "Starting Node-RED"
   if is_alive "$PID_NODERED"; then
@@ -150,9 +122,8 @@ start_nodered() {
 
   wait_port $NODERED_PORT "Node-RED" 45
 
-  # Auto-import the flow via Node-RED admin API
   log "Importing nodered.json flow…"
-  sleep 2  # give the runtime a moment to settle
+  sleep 2
   local http_code
   http_code=$(curl -s -o /dev/null -w "%{http_code}" \
     -X POST "http://localhost:$NODERED_PORT/flows" \
@@ -186,11 +157,6 @@ start_akka() {
   fi
 
   log "Building + starting Akka → log: $LOG_AKKA"
-  # `exec mvn` replaces the subshell's own process image with mvn instead of
-  # forking mvn as a child, so $! is mvn's real PID with nothing to orphan.
-  # exec:java runs App's main() in that same process (no further forking), and
-  # App.java now shuts down on a JVM shutdown hook instead of blocking on
-  # stdin, so a plain `kill -TERM` on this PID is enough to stop it cleanly.
   (
     cd "$AKKA_DIR"
     exec mvn -q clean compile exec:java -Dexec.mainClass=com.digitaltwin.App
@@ -198,7 +164,6 @@ start_akka() {
   save_pid $! "$PID_AKKA"
   ok "Akka started (pid $!)"
 
-  # Akka HTTP binds asynchronously — check via HTTP not lsof
   log "Waiting for Akka HTTP server on port $AKKA_PORT..."
   local timeout=45
   local i=0
@@ -220,7 +185,6 @@ start_cooja() {
     return
   fi
 
-  # Ensure XQuartz / X11 is allowed
   log "Enabling X11 connections (xhost +localhost)…"
   xhost +localhost &>/dev/null || warn "xhost failed — ensure XQuartz is running"
 
@@ -230,8 +194,6 @@ start_cooja() {
     exit 1
   fi
 
-  # simulation.csc uses a [CONTIKI_DIR] placeholder so the flow works on any
-  # machine/account, not just one with a hardcoded contiki-ng path.
   log "Generating simulation .csc for CONTIKI_DIR=$CONTIKI_NG"
   sed "s#\[CONTIKI_DIR\]#$CONTIKI_NG#g" "$SIM_FILE_TEMPLATE" > "$SIM_FILE"
 
@@ -257,16 +219,11 @@ start_tunslip() {
     return
   fi
 
-  # Wait for Cooja's serial socket to open
   if ! wait_port $TUNSLIP_PORT "Cooja Serial Socket" 45; then
     err "Cannot start tunslip6 because Cooja Serial Socket is not open."
     return 1
   fi
 
-  # tunslip6 needs root to create a tun interface. sudo must prompt (or use a
-  # cached ticket) *here*, in the foreground, while a real TTY is still attached —
-  # if we background it directly, a failed/expired prompt fails silently and
-  # tunslip6 just never starts, with no RPL bridge and no clear error.
   if ! sudo -n true 2>/dev/null; then
     log "tunslip6 requires sudo — you may be prompted for your macOS password"
     if ! sudo -v; then
@@ -290,9 +247,6 @@ start_tunslip() {
   ok "tunslip6 started (pid $!)"
 }
 
-# =============================================================================
-# START ALL
-# =============================================================================
 cmd_start() {
   banner "🚀 Digital Twin — Full Stack Start"
   echo -e "${BOLD}Flow: Contiki (Cooja) → Node-RED → Akka${RESET}\n"
@@ -303,7 +257,6 @@ cmd_start() {
     log "Skipping native Cooja startup (Cooja is expected to run in Docker)"
   fi
 
-  # Check firmware exists (only if starting native cooja)
   if $start_native_cooja && [[ ! -f "$CONTIKI_NG/examples/iot-node/build/cooja/iot-node.cooja" ]]; then
     warn "Firmware not compiled yet — running compile step first…"
     cmd_compile
@@ -327,9 +280,6 @@ cmd_start() {
   echo -e "${BOLD}Run  ${CYAN}./run.sh test${RESET}${BOLD}  to verify the end-to-end flow${RESET}"
 }
 
-# =============================================================================
-# STOP ALL
-# =============================================================================
 cmd_stop() {
   banner "🛑 Stopping All Services"
 
@@ -351,8 +301,7 @@ cmd_stop() {
   done
 
   log "Cleaning up any remaining processes on ports $AKKA_PORT, $NODERED_PORT..."
-  
-  # Kill processes on Akka port (using sudo to handle root-owned instances)
+
   local akka_pid
   akka_pid=$(sudo lsof -t -i :"$AKKA_PORT" -sTCP:LISTEN 2>/dev/null || true)
   if [[ -n "$akka_pid" ]]; then
@@ -362,7 +311,6 @@ cmd_stop() {
     sudo kill -KILL "$akka_pid" 2>/dev/null || true
   fi
 
-  # Kill processes on Node-RED port (using sudo)
   local nr_pid
   nr_pid=$(sudo lsof -t -i :"$NODERED_PORT" -sTCP:LISTEN 2>/dev/null || true)
   if [[ -n "$nr_pid" ]]; then
@@ -372,10 +320,6 @@ cmd_stop() {
     sudo kill -KILL "$nr_pid" 2>/dev/null || true
   fi
 
-  # Kill any stray Cooja/Gradle/tunslip6 processes by name (using sudo).
-  # Akka's PID is now tracked accurately (see start_akka), so it doesn't need
-  # a name-based fallback here; Cooja's gradlew wrapper still forks in a way
-  # this script doesn't track precisely, so it keeps this broader fallback.
   log "Stopping any remaining processes by name..."
   sudo pkill -f "org.contikios.cooja" 2>/dev/null || true
   sudo pkill -f "GradleWrapperMain" 2>/dev/null || true
@@ -384,9 +328,6 @@ cmd_stop() {
   ok "All services stopped"
 }
 
-# =============================================================================
-# STATUS
-# =============================================================================
 check_service() {
   local name=$1 pidfile=$2 port=$3 logfile=$4
   local pid status_text color
@@ -407,7 +348,6 @@ check_service() {
 
   printf "  ${BOLD}%-12s${RESET}  ${color}%s${RESET}\n" "$name" "$status_text"
 
-  # Show last 3 log lines
   if [[ -f "$logfile" && -s "$logfile" ]]; then
     echo -e "    ${CYAN}↳ Recent log:${RESET}"
     tail -3 "$logfile" | sed 's/^/      /'
@@ -430,9 +370,6 @@ cmd_status() {
   done
 }
 
-# =============================================================================
-# LOGS
-# =============================================================================
 cmd_logs() {
   local target="${1:-all}"
   banner "📋 Logs — $target"
@@ -444,7 +381,6 @@ cmd_logs() {
     tunslip) tail -f "$LOG_TUNSLIP" ;;
     compile) tail -f "$LOG_DIR/compile.log" ;;
     all)
-      # Tail all logs in parallel with labels using multitail or plain tail
       if command -v multitail &>/dev/null; then
         multitail -l "tail -f $LOG_AKKA" \
                   -l "tail -f $LOG_NODERED" \
@@ -460,14 +396,10 @@ cmd_logs() {
   esac
 }
 
-# =============================================================================
-# TEST — End-to-end verification
-# =============================================================================
 cmd_test() {
   banner "🧪 End-to-End Verification"
   local pass=0 fail=0
 
-  # Helper: test result
   check() {
     local desc=$1 result=$2
     if [[ "$result" == "ok" ]]; then
@@ -477,7 +409,6 @@ cmd_test() {
     fi
   }
 
-  # ── 1. Node-RED reachable ─────────────────────────────────────────────────
   log "[1/7] Node-RED HTTP reachable (port $NODERED_PORT)…"
   if curl -sf "http://localhost:$NODERED_PORT" -o /dev/null; then
     check "Node-RED is reachable" "ok"
@@ -485,7 +416,6 @@ cmd_test() {
     check "Node-RED is reachable" "connection refused on port $NODERED_PORT"
   fi
 
-  # ── 2. Node-RED flow deployed (udp-in node on port 5000) ─────────────────
   log "[2/7] Checking Node-RED flow has UDP-in node on port 5000…"
   local flow_json
   flow_json=$(curl -sf "http://localhost:$NODERED_PORT/flows" 2>/dev/null || echo "")
@@ -495,7 +425,6 @@ cmd_test() {
     check "UDP-in node deployed on port 5000" "flow not found or not deployed"
   fi
 
-  # ── 3. Akka HTTP reachable ────────────────────────────────────────────────
   log "[3/7] Akka HTTP reachable (port $AKKA_PORT)…"
   local akka_code
   akka_code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:$AKKA_PORT/" 2>/dev/null || echo "000")
@@ -505,14 +434,12 @@ cmd_test() {
     check "Akka is reachable" "connection refused on port $AKKA_PORT"
   fi
 
-  # ── 4. UDP listener test — can port 5000 accept packets? ─────────────────
   log "[4/7] Sending a test TRAFFIC UDP packet to port 5000…"
   local test_payload='{"moteId":99,"type":"TRAFFIC","seq":1,"parent":"test"}'
   echo "$test_payload" | nc -u -w1 127.0.0.1 5000 2>/dev/null && \
     check "UDP TRAFFIC packet sent to Node-RED port 5000" "ok" || \
     check "UDP TRAFFIC packet sent to Node-RED port 5000" "nc failed (netcat not installed?)"
 
-  # ── 5. SET_PERIOD command via Node-RED /set-params ────────────────────────
   log "[5/7] Testing SET_PERIOD via POST /set-params…"
   local sp_code
   sp_code=$(curl -s -o "$LOG_DIR/test_setperiod.out" -w "%{http_code}" \
@@ -525,7 +452,6 @@ cmd_test() {
     check "SET_PERIOD command accepted" "HTTP $sp_code — check $LOG_DIR/test_setperiod.out"
   fi
 
-  # ── 6. Akka /traffic endpoint ─────────────────────────────────────────────
   log "[6/7] Testing Akka /traffic endpoint directly…"
   local tr_code
   tr_code=$(curl -s -o "$LOG_DIR/test_traffic.out" -w "%{http_code}" \
@@ -538,19 +464,12 @@ cmd_test() {
     check "Akka /traffic accepted" "HTTP $tr_code — check $LOG_DIR/test_traffic.out"
   fi
 
-  # ── 7. Full pipeline — a UDP mote packet must produce a live SSE event ────
-  # Steps 4 and 6 only prove each hop works in isolation (nc can send to
-  # Node-RED; curl can hit Akka directly) — neither proves a real mote packet
-  # actually survives Node-RED's parse/route/http-request chain and comes out
-  # the other end as a dashboard event. This is what the frontend actually
-  # relies on (main.js opens an EventSource on Akka's /events), so it's the
-  # only check that reflects "can I see simulation data in the UI".
   log "[7/7] Verifying UDP packet → Node-RED → Akka → SSE dashboard event (full pipeline)…"
   local sse_log="$LOG_DIR/test_sse.out"
   : > "$sse_log"
   curl -sN "http://localhost:$AKKA_PORT/events" >> "$sse_log" 2>/dev/null &
   local sse_pid=$!
-  sleep 1  # let the SSE connection establish before firing the packet
+  sleep 1
 
   local e2e_mote_id=54321
   local e2e_payload="{\"moteId\":$e2e_mote_id,\"type\":\"TRAFFIC\",\"seq\":1,\"parent\":\"test\"}"
@@ -574,7 +493,6 @@ cmd_test() {
       "no SSE event for moteId $e2e_mote_id within 8s — check $sse_log, the Node-RED debug tab, and $LOG_AKKA"
   fi
 
-  # ── Summary ───────────────────────────────────────────────────────────────
   echo ""
   local total=$((pass + fail))
   if [[ $fail -eq 0 ]]; then
@@ -594,9 +512,6 @@ cmd_test() {
   fi
 }
 
-# =============================================================================
-# WRITE STATUS SNAPSHOT  (plain text, updated every dashboard refresh)
-# =============================================================================
 write_status_snapshot() {
   local now; now=$(date '+%Y-%m-%d %H:%M:%S')
   {
@@ -631,21 +546,15 @@ write_status_snapshot() {
   } > "$LOG_STATUS"
 }
 
-# =============================================================================
-# DASHBOARD  — live auto-refreshing terminal view
-# =============================================================================
 cmd_dashboard() {
-  local interval=${1:-2}   # refresh every N seconds
+  local interval=${1:-2}
 
-  # Hide cursor, restore on exit
   tput civis 2>/dev/null || true
   trap 'tput cnorm 2>/dev/null; echo; exit 0' INT TERM
 
   while true; do
-    # ── Build frame in a variable to avoid flicker ────────────────────────
     local frame=""
 
-    # Header
     frame+="$(echo -e "${BOLD}${BLUE}")"
     frame+="$(printf '═%.0s' {1..60})\n"
     frame+="  🌐  Digital Twin Live Dashboard"
@@ -655,7 +564,6 @@ cmd_dashboard() {
     frame+="$(echo -e "${RESET}")\n"
     frame+="$(echo -e "${BLUE}$(printf '═%.0s' {1..60})${RESET}")\n\n"
 
-    # Flow diagram
     frame+="$(echo -e "${BOLD}")  Flow:$(echo -e "${RESET}")"
     frame+="  Contiki/Cooja"
     frame+="$(echo -e "${CYAN}") ──UDP:5000──► $(echo -e "${RESET}")"
@@ -663,7 +571,6 @@ cmd_dashboard() {
     frame+="$(echo -e "${CYAN}") ──HTTP:8080──► $(echo -e "${RESET}")"
     frame+="Akka\n\n"
 
-    # Service rows
     for entry in "Node-RED:$PID_NODERED:$NODERED_PORT:$LOG_NODERED" \
                  "Akka:$PID_AKKA:$AKKA_PORT:$LOG_AKKA" \
                  "Cooja:$PID_COOJA::$LOG_COOJA" \
@@ -689,7 +596,6 @@ cmd_dashboard() {
       frame+="  ${state_color}${BOLD}${dot} $(printf '%-10s' "$svc")${RESET}"
       frame+="  ${state_color}${state_txt}${RESET}\n"
 
-      # Last 3 log lines, indented
       if [[ -f "$logfile" && -s "$logfile" ]]; then
         local log_lines
         log_lines=$(tail -3 "$logfile" 2>/dev/null \
@@ -701,7 +607,6 @@ cmd_dashboard() {
       frame+="\n"
     done
 
-    # Port health summary
     frame+="$(echo -e "${BLUE}$(printf '─%.0s' {1..60})${RESET}")\n"
     frame+="$(echo -e "${BOLD}")  Port Health:$(echo -e "${RESET}")\n"
     for p_label in "5000:UDP→Node-RED (Contiki telemetry)" \
@@ -717,7 +622,6 @@ cmd_dashboard() {
       fi
     done
 
-    # Log file sizes
     frame+="\n$(echo -e "${BLUE}$(printf '─%.0s' {1..60})${RESET}")\n"
     frame+="$(echo -e "${BOLD}")  Log Files:$(echo -e "${RESET}")\n"
     for lf in "$LOG_NODERED" "$LOG_AKKA" "$LOG_COOJA" "$LOG_TUNSLIP" "$LOG_MAIN"; do
@@ -732,11 +636,9 @@ cmd_dashboard() {
     frame+="$(echo -e "${CYAN}")./run.sh test$(echo -e "${RESET}")  "
     frame+="$(echo -e "${CYAN}")./run.sh stop$(echo -e "${RESET}")\n"
 
-    # ── Atomic redraw ──────────────────────────────────────────────────────
     tput cup 0 0 2>/dev/null || clear
     echo -e "$frame"
 
-    # ── Write plain-text snapshot to status.log ────────────────────────────
     write_status_snapshot
 
     sleep "$interval"
@@ -745,9 +647,6 @@ cmd_dashboard() {
   tput cnorm 2>/dev/null || true
 }
 
-# =============================================================================
-# ENTRYPOINT
-# =============================================================================
 print_help() {
   cat <<EOF
 

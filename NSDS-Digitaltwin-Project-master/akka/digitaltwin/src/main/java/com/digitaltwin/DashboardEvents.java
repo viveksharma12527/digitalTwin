@@ -6,10 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import akka.http.javadsl.model.sse.ServerSentEvent;
 
-/**
- * Maps internal {@link MoteMessages.Command} payloads to the JSON shape
- * expected by frontend/main.js (type + fields).
- */
 public final class DashboardEvents {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();

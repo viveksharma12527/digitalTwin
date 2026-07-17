@@ -20,11 +20,7 @@ public class ModeActor extends AbstractActor{
     @Override
     public Receive createReceive() {
         return receiveBuilder()
-        // Handle parent change messages
             .match(MoteMessages.ParentChanged.class, msg -> {
-                // Only push into history when the parent actually changed -- a
-                // duplicate/retransmitted event for the same parent must not
-                // evict a genuinely distinct earlier parent from the K-history.
                 if (this.currentParent != 0 && msg.newParentId != this.currentParent) {
                     parentHistory.addFirst(this.currentParent);
                     if (parentHistory.size() > K) {
@@ -34,24 +30,18 @@ public class ModeActor extends AbstractActor{
                 this.currentParent = msg.newParentId;
                 System.out.println("Parent changed to: " + this.currentParent);
             })
-            // Handle Traffic messages
             .match(MoteMessages.AppTrafficReceived.class, msg -> {
 
                 System.out.println("App traffic received for mote: " + msg.moteId);
             })
-            // Period T: twin updates only after PhysicalNodeSync succeeded in DigitalTwinServer
             .match(MoteMessages.UpdatePeriodT.class, msg -> {
                 this.periodT = msg.newT;
                 System.out.println("Twin period T updated to: " + this.periodT + " for mote " + msg.moteId);
             })
-            // Handle mote crash messages: mirror the physical crash by failing this
-            // actor so the supervisor (MoteManager) restarts it to a clean state.
             .match(MoteMessages.MoteCrashed.class, msg -> {
                 System.err.println("CRASH! Node " + msg.moteId + " has crashed, mirroring in Digital Twin.");
                 throw new MoteCrashSimulationException(msg.moteId);
             })
-            // Physical recovery is driven and confirmed by Node-RED; this is just
-            // the twin acknowledging that its physical counterpart is healthy again.
             .match(MoteMessages.MoteRevived.class, msg -> {
                 System.out.println("Node " + msg.moteId + " revived.");
             })
@@ -60,12 +50,10 @@ public class ModeActor extends AbstractActor{
 
     @Override
     public void preStart() {
-        // Initialization logic here
-        System.out.println("ModeActor started");  
+        System.out.println("ModeActor started");
     }
     @Override
     public void postStop() {
-        // Cleanup logic here
-        System.out.println("ModeActor stopped");    
+        System.out.println("ModeActor stopped");
         }
 }

@@ -1,39 +1,21 @@
-/**
- * IoT Network Dashboard — main.js
- * Plain vanilla JS / Canvas 2D. No bundler required.
- * Open index.html directly or serve with: python -m http.server
- */
-
-/* ═══════════════════════════════════════════════════════════════
-   CONFIG
-═══════════════════════════════════════════════════════════════ */
 const CFG = {
-  apiBase: 'http://localhost:8080',     // overridable via HUD input
-  sseReconnectMin: 1000,                // ms — initial reconnect delay
-  sseReconnectMax: 30000,               // ms — max reconnect delay
-  demoRate: 1200,                       // ms — demo event interval
-  moteRadius: 18,                       // canvas px
-  pulseLifetime: 900,                   // ms — traffic pulse animation
-  hazeLifetime: 600,                    // ms — period-update halo
+  apiBase: 'http://localhost:8080',
+  sseReconnectMin: 1000,
+  sseReconnectMax: 30000,
+  demoRate: 1200,
+  moteRadius: 18,
+  pulseLifetime: 900,
+  hazeLifetime: 600,
   labelFont: '600 12px JetBrains Mono, monospace',
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   STATE
-═══════════════════════════════════════════════════════════════ */
-// motes: Map<id, { id, parent, T, crashed, x, y, vx, vy }>
 const motes = new Map();
 
-// active canvas animations: Array<{ type, ... }>
 const anims = [];
 
-// HUD counters
 let statTraffic = 0;
 let statCrashes = 0;
 
-/* ═══════════════════════════════════════════════════════════════
-   CANVAS SETUP
-═══════════════════════════════════════════════════════════════ */
 let canvas, ctx, W = 0, H = 0;
 
 function initCanvas() {
@@ -49,22 +31,18 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 
-/* ═══════════════════════════════════════════════════════════════
-   LAYOUT — force-directed spring layout (simple Euler)
-═══════════════════════════════════════════════════════════════ */
 const LAYOUT = {
-  repulsion: 3200,   // node–node push
-  spring: 0.012,     // edge attraction
-  restLen: 160,      // desired edge length
-  damping: 0.82,     // velocity damping per frame
-  centerPull: 0.003, // weak pull toward canvas centre
+  repulsion: 3200,
+  spring: 0.012,
+  restLen: 160,
+  damping: 0.82,
+  centerPull: 0.003,
 };
 
 function layoutTick(dt) {
   const nodes = [...motes.values()];
   if (nodes.length === 0) return;
 
-  // repulsion between all pairs
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
       const a = nodes[i], b = nodes[j];
@@ -78,7 +56,6 @@ function layoutTick(dt) {
     }
   }
 
-  // spring attraction along edges
   for (const m of nodes) {
     if (m.parent != null && motes.has(m.parent)) {
       const p = motes.get(m.parent);
@@ -92,7 +69,6 @@ function layoutTick(dt) {
     }
   }
 
-  // integrate + dampen + boundary + centre pull
   for (const m of nodes) {
     m.vx = (m.vx + (W / 2 - m.x) * LAYOUT.centerPull) * LAYOUT.damping;
     m.vy = (m.vy + (H / 2 - m.y) * LAYOUT.centerPull) * LAYOUT.damping;
@@ -101,9 +77,6 @@ function layoutTick(dt) {
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   MOTE MANAGEMENT
-═══════════════════════════════════════════════════════════════ */
 function ensureMote(id) {
   if (!motes.has(id)) {
     motes.set(id, {
@@ -120,9 +93,6 @@ function ensureMote(id) {
   return motes.get(id);
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   EVENT HANDLERS — called for each SSE / demo event
-═══════════════════════════════════════════════════════════════ */
 function handleEvent(evt) {
   switch (evt.type) {
     case 'TRAFFIC':        onTraffic(evt);        break;
@@ -142,7 +112,6 @@ function onTraffic({ moteId }) {
 
   if (m.parent == null || !motes.has(m.parent)) return;
   const p = motes.get(m.parent);
-  // spawn a moving pulse along the child→parent edge
   anims.push({ type: 'pulse', fromId: moteId, toId: m.parent,
     t: 0, duration: CFG.pulseLifetime,
     x0: m.x, y0: m.y, x1: p.x, y1: p.y });
@@ -153,7 +122,6 @@ function onParentChanged({ moteId, newParentId }) {
   const oldParent = m.parent;
   m.parent = newParentId != null ? newParentId : null;
   if (newParentId != null) ensureMote(newParentId);
-  // animate the reconnection: flash old link then new
   anims.push({ type: 'relink', moteId, oldParent, newParent: m.parent,
     t: 0, duration: 500 });
 }
@@ -161,9 +129,7 @@ function onParentChanged({ moteId, newParentId }) {
 function onPeriodUpdated({ moteId, newT }) {
   const m = ensureMote(moteId);
   m.T = newT;
-  // halo pulse on the mote
   anims.push({ type: 'haze', moteId, t: 0, duration: CFG.hazeLifetime });
-  // refresh inspector if open for this mote
   if (inspectorMoteId === moteId) openInspector(moteId);
 }
 
@@ -172,7 +138,6 @@ function onCrash({ moteId }) {
   m.crashed = true;
   statCrashes++;
   document.getElementById('stat-crashes').textContent = statCrashes;
-  // flash red ring
   anims.push({ type: 'crash', moteId, t: 0, duration: 800 });
   if (inspectorMoteId === moteId) openInspector(moteId);
 }
@@ -180,14 +145,10 @@ function onCrash({ moteId }) {
 function onRevived({ moteId }) {
   const m = ensureMote(moteId);
   m.crashed = false;
-  // halo pulse to signal recovery
   anims.push({ type: 'haze', moteId, t: 0, duration: CFG.hazeLifetime });
   if (inspectorMoteId === moteId) openInspector(moteId);
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   DRAW
-═══════════════════════════════════════════════════════════════ */
 const COLOR = {
   bg:           '#0d1117',
   edge:         'rgba(56,189,248,0.18)',
@@ -199,16 +160,13 @@ const COLOR = {
   pulse:        '#7dd3fc',
 };
 
-// mote selected via click
 let selectedMote = null;
 
 function draw(now) {
   ctx.clearRect(0, 0, W, H);
 
-  // subtle grid
   drawGrid();
 
-  // edges
   for (const m of motes.values()) {
     if (m.parent != null && motes.has(m.parent)) {
       const p = motes.get(m.parent);
@@ -221,10 +179,8 @@ function draw(now) {
     }
   }
 
-  // animations (drawn before nodes so pulses sit on top of edges)
   drawAnims(now);
 
-  // nodes
   for (const m of motes.values()) {
     drawMote(m);
   }
@@ -249,7 +205,6 @@ function drawMote(m) {
     : isSelected ? COLOR.moteSelected
     : COLOR.moteNormal;
 
-  // outer glow
   const glow = ctx.createRadialGradient(m.x, m.y, r * 0.5, m.x, m.y, r * 2.4);
   glow.addColorStop(0, hexAlpha(color, 0.25));
   glow.addColorStop(1, 'transparent');
@@ -258,7 +213,6 @@ function drawMote(m) {
   ctx.fillStyle = glow;
   ctx.fill();
 
-  // fill circle
   ctx.beginPath();
   ctx.arc(m.x, m.y, r, 0, Math.PI * 2);
   const grad = ctx.createRadialGradient(m.x - r * 0.3, m.y - r * 0.3, 0, m.x, m.y, r);
@@ -267,18 +221,15 @@ function drawMote(m) {
   ctx.fillStyle = grad;
   ctx.fill();
 
-  // ring
   ctx.lineWidth = isSelected ? 2.5 : 1.5;
   ctx.strokeStyle = hexAlpha(color, isSelected ? 1 : 0.6);
   ctx.stroke();
 
-  // crash badge indicator (top-right of the mote to avoid obscuring the label)
   if (m.crashed) {
     const badgeX = m.x + r * 0.75;
     const badgeY = m.y - r * 0.75;
     const badgeR = 6.5;
 
-    // Draw badge background (red circle)
     ctx.beginPath();
     ctx.arc(badgeX, badgeY, badgeR, 0, Math.PI * 2);
     ctx.fillStyle = '#ef4444';
@@ -287,7 +238,6 @@ function drawMote(m) {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Draw white X inside the badge
     const bs = 2.5;
     ctx.beginPath();
     ctx.moveTo(badgeX - bs, badgeY - bs); ctx.lineTo(badgeX + bs, badgeY + bs);
@@ -297,7 +247,6 @@ function drawMote(m) {
     ctx.stroke();
   }
 
-  // label (dynamic color for perfect contrast on yellow/blue/red backgrounds)
   ctx.font = CFG.labelFont;
   ctx.fillStyle = isSelected ? '#0d1117' : COLOR.label;
   ctx.textAlign = 'center';
@@ -311,7 +260,6 @@ function drawAnims(now) {
     const progress = a.t / a.duration;
 
     if (a.type === 'pulse') {
-      // moving dot along child→parent edge, following current node positions
       const child  = motes.get(a.fromId);
       const parent = motes.get(a.toId);
       if (!child || !parent) { anims.splice(i, 1); continue; }
@@ -322,14 +270,12 @@ function drawAnims(now) {
       ctx.arc(x, y, 5, 0, Math.PI * 2);
       ctx.fillStyle = hexAlpha(COLOR.pulse, alpha);
       ctx.fill();
-      // trail
       ctx.beginPath();
       ctx.arc(x, y, 9, 0, Math.PI * 2);
       ctx.fillStyle = hexAlpha(COLOR.pulse, alpha * 0.2);
       ctx.fill();
 
     } else if (a.type === 'haze') {
-      // expanding ring on mote
       const m = motes.get(a.moteId);
       if (!m) { anims.splice(i, 1); continue; }
       const r = CFG.moteRadius + progress * 40;
@@ -341,7 +287,6 @@ function drawAnims(now) {
       ctx.stroke();
 
     } else if (a.type === 'crash') {
-      // pulsing red ring
       const m = motes.get(a.moteId);
       if (!m) { anims.splice(i, 1); continue; }
       const r = CFG.moteRadius + progress * 50;
@@ -353,7 +298,6 @@ function drawAnims(now) {
       ctx.stroke();
 
     } else if (a.type === 'relink') {
-      // flash new edge bright
       const m = motes.get(a.moteId);
       const p = a.newParent != null ? motes.get(a.newParent) : null;
       if (m && p) {
@@ -367,21 +311,16 @@ function drawAnims(now) {
       }
     }
 
-    // remove expired animations
     if (progress >= 1) anims.splice(i, 1);
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   ANIMATION LOOP
-═══════════════════════════════════════════════════════════════ */
 let lastNow = 0;
 
 function loop(now) {
   const dt = now - lastNow;
   lastNow = now;
 
-  // advance animation timers
   for (const a of anims) a.t = Math.min(a.t + dt, a.duration);
 
   layoutTick(dt);
@@ -393,16 +332,10 @@ function startLoop() {
   requestAnimationFrame(loop);
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   HUD STATS
-═══════════════════════════════════════════════════════════════ */
 function updateHUDStats() {
   document.getElementById('stat-motes').textContent = motes.size;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   SSE CONNECTION
-═══════════════════════════════════════════════════════════════ */
 let sseSource = null;
 let sseDelay  = CFG.sseReconnectMin;
 let sseTimer  = null;
@@ -431,7 +364,7 @@ function connectSSE() {
 
   sseSource.onopen = () => {
     setSSEStatus('connected', 'Live');
-    sseDelay = CFG.sseReconnectMin; // reset backoff
+    sseDelay = CFG.sseReconnectMin;
   };
 
   sseSource.onmessage = (e) => {
@@ -459,15 +392,10 @@ function scheduleReconnect() {
   if (demoMode) return;
   sseTimer = setTimeout(() => {
     connectSSE();
-    // exponential backoff capped at max
     sseDelay = Math.min(sseDelay * 2, CFG.sseReconnectMax);
   }, sseDelay);
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   DEMO MODE — built-in event simulator
-═══════════════════════════════════════════════════════════════ */
-// seed a small network
 const DEMO_MOTE_IDS = [0, 1, 2, 3, 4, 5, 6, 7];
 
 function initDemoNetwork() {
@@ -475,7 +403,6 @@ function initDemoNetwork() {
     const m = ensureMote(id);
     m.crashed = false;
     m.T = 5 + id;
-    // simple tree: 0 is root, rest point to lower-id neighbours
     m.parent = id === 0 ? null : Math.floor(id / 2);
   }
 }
@@ -485,25 +412,21 @@ function demoTick() {
   const ids  = DEMO_MOTE_IDS;
 
   if (roll < 0.45) {
-    // TRAFFIC — most common
     const id = ids[Math.floor(Math.random() * ids.length)];
     handleEvent({ type: 'TRAFFIC', moteId: id, timestamp: Date.now() });
 
   } else if (roll < 0.65) {
-    // PARENT_CHANGED
     const child  = ids[1 + Math.floor(Math.random() * (ids.length - 1))];
     let newParent = ids[Math.floor(Math.random() * ids.length)];
     if (newParent === child) newParent = 0;
     handleEvent({ type: 'PARENT_CHANGED', moteId: child, newParentId: newParent });
 
   } else if (roll < 0.80) {
-    // PERIOD_UPDATED
     const id = ids[Math.floor(Math.random() * ids.length)];
     const newT = 1 + Math.floor(Math.random() * 30);
     handleEvent({ type: 'PERIOD_UPDATED', moteId: id, newT });
 
   } else {
-    // CRASH — rare; auto-recover after 3 s
     const id = ids[1 + Math.floor(Math.random() * (ids.length - 1))];
     handleEvent({ type: 'CRASH', moteId: id });
     setTimeout(() => {
@@ -525,9 +448,6 @@ function stopDemo() {
   setSSEStatus('disconnected', 'Disconnected');
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   INSPECTOR
-═══════════════════════════════════════════════════════════════ */
 let inspectorMoteId = null;
 
 function openInspector(id) {
@@ -567,9 +487,6 @@ function initInspectorEvents() {
   });
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   PERIOD UPDATE — POST to /updateT
-═══════════════════════════════════════════════════════════════ */
 function initFormEvents() {
   document.getElementById('update-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -594,7 +511,6 @@ function initFormEvents() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       showFormMsg('ok', `T updated to ${newT}s`);
-      // optimistic local update
       const m = motes.get(inspectorMoteId);
       if (m) { m.T = newT; openInspector(inspectorMoteId); }
     } catch (err) {
@@ -612,9 +528,6 @@ function showFormMsg(type, text) {
   el.textContent = text;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   CANVAS CLICK — hit-test motes
-═══════════════════════════════════════════════════════════════ */
 function initCanvasEvents() {
   canvas.addEventListener('click', (e) => {
     const rect = canvas.getBoundingClientRect();
@@ -628,14 +541,10 @@ function initCanvasEvents() {
         return;
       }
     }
-    // click on empty space: deselect
     selectedMote = null;
   });
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   HUD CONTROLS
-═══════════════════════════════════════════════════════════════ */
 let demoToggle;
 
 function initHUDControls() {
@@ -663,11 +572,7 @@ function initHUDControls() {
   });
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   COLOUR UTILITIES
-═══════════════════════════════════════════════════════════════ */
 function hexAlpha(hex, alpha) {
-  // parse '#rrggbb' → rgba()
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
@@ -685,10 +590,6 @@ function darken(hex, amount) {
   return lighten(hex, -amount);
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   BOOT
-═══════════════════════════════════════════════════════════════ */
-// Wait for DOM before initializing canvas, event listeners, and loop
 function init() {
   initCanvas();
   initCanvasEvents();
@@ -696,7 +597,6 @@ function init() {
   initFormEvents();
   initHUDControls();
   startLoop();
-  // Kick off SSE connection on load (live mode by default)
   connectSSE();
 }
 

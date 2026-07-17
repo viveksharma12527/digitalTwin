@@ -7,7 +7,6 @@ public class MoteMessages {
     public interface Command {
         int moteId();
     }
-    // 1. Physical -> Digital: Mirroring Parent Changes
     public static final class ParentChanged implements Command {
         public final int moteId;
         public final int newParentId;
@@ -20,7 +19,6 @@ public class MoteMessages {
 
         @Override public int moteId() { return moteId; }
     }
-    // 2. Physical -> Digital: Mimicking Message Flow (Traffic)
 
     public static final class AppTrafficReceived implements Command {
         public final int moteId;
@@ -31,7 +29,6 @@ public class MoteMessages {
 
         @Override public int moteId() { return moteId; }
     }
-    // 3. Digital -> Physical: Synchronizing Period T
     public static final class UpdatePeriodT implements Command {
         public final int moteId;
         public final int newT;
@@ -45,7 +42,6 @@ public class MoteMessages {
         @Override public int moteId() { return moteId; }
     }
 
-    // 4. Physical -> Digital: Mirroring Crash
     public static final class MoteCrashed implements Command {
         public final int moteId;
 
@@ -55,9 +51,6 @@ public class MoteMessages {
         @Override public int moteId() { return moteId; }
     }
 
-    // 5. Physical -> Digital: Mirroring Recovery (symmetric to MoteCrashed).
-    // Sent by Node-RED once it has told the physical/simulated mote to resume,
-    // so the twin (and dashboard) can reflect that the mote is healthy again.
     public static final class MoteRevived implements Command {
         public final int moteId;
 

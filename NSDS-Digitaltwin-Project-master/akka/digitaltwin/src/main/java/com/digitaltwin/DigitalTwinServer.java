@@ -106,9 +106,6 @@ public class DigitalTwinServer extends AllDirectives {
                 )
             )),
 
-            // Called by Node-RED once it has told the physical/simulated mote to
-            // resume, after Node-RED itself decided to revive it (see MoteManager's
-            // supervisorStrategy comment on why that decision doesn't live in Akka).
             path("revived", () -> withCors(
                 post(() ->
                     entity(Jackson.unmarshaller(MoteMessages.MoteRevived.class), msg -> {
@@ -125,10 +122,6 @@ public class DigitalTwinServer extends AllDirectives {
         System.out.println("SSE dashboard stream: GET http://localhost:8080/events");
     }
 
-    /**
-     * OPTIONS must be handled on the same path segment (e.g. /updateT), otherwise
-     * Akka HTTP rejects preflight when the path is not fully consumed.
-     */
     private Route withCors(Route inner) {
         return respondWithDefaultHeaders(CORS_HEADERS, () ->
             concat(
