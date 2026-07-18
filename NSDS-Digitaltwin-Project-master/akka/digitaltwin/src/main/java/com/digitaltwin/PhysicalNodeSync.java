@@ -12,7 +12,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 public final class PhysicalNodeSync {
 
-    private static final String SET_PARAMS_URL = "http://127.0.0.1:1880/set-params";
+    private static final String SET_PARAMS_URL = "http://192.168.1.159:1880/set-params";
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()

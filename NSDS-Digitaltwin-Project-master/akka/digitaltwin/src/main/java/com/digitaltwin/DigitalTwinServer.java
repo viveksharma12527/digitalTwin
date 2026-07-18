@@ -117,9 +117,9 @@ public class DigitalTwinServer extends AllDirectives {
             ))
         );
 
-        http.newServerAt("localhost", 8080).bind(route);
-        System.out.println("Server online at http://localhost:8080/");
-        System.out.println("SSE dashboard stream: GET http://localhost:8080/events");
+        http.newServerAt("0.0.0.0", 8080).bind(route);
+        System.out.println("Server online at http://0.0.0.0:8080/ (reachable on this host's network IP)");
+        System.out.println("SSE dashboard stream: GET http://<this-host-ip>:8080/events");
     }
 
     private Route withCors(Route inner) {
